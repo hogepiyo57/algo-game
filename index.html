@@ -2,41 +2,17 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.8</title>
+  <title>ALGO ONLINE Ver1.9</title>
   <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      background: #222;
-      color: #fff;
-    }
-    h1 {
-      font-size: 36px;
-      margin-bottom: 5px;
-    }
-    .version {
-      font-size: 14px;
-      color: #aaa;
-      margin-left: 8px;
-    }
+    body { font-family: sans-serif; text-align: center; background: #222; color: #fff; }
+    h1 { font-size: 36px; margin-bottom: 5px; }
+    .version { font-size: 14px; color: #aaa; margin-left: 8px; }
     #game, #joinArea { display: none; }
-    .card-row {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin: 10px 0;
-    }
+    .card-row { display: flex; justify-content: center; gap: 10px; margin: 10px 0; }
     .card {
-      width: 60px;
-      height: 80px;
-      border-radius: 8px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-size: 22px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: transform 0.2s;
+      width: 60px; height: 80px; border-radius: 8px;
+      display: flex; justify-content: center; align-items: center;
+      font-size: 22px; font-weight: bold; cursor: pointer; transition: transform 0.2s;
     }
     .card:hover { transform: scale(1.1); }
     .closed { background: gray; color: transparent; }
@@ -45,27 +21,18 @@
     .selected { outline: 4px solid yellow; }
     .self-closed { box-shadow: 0 0 0 3px #555 inset; }
     .self-open   { box-shadow: 0 0 0 3px #38c172 inset; }
-
     button { padding: 6px 12px; margin: 8px; cursor: pointer; }
     #numberSelect { display: flex; justify-content: center; gap: 5px; margin: 10px 0; flex-wrap: wrap; }
     #numberSelect button { width: 40px; height: 40px; font-size: 18px; }
     #log { margin-top: 20px; max-height: 200px; overflow-y: auto; text-align: left; }
-    #turnNotice {
-      font-size: 20px;
-      margin-top: 10px;
-      color: #ffd700;
-    }
-    #lastResult {
-      margin-top: 8px;
-      font-size: 16px;
-      font-weight: bold;
-    }
+    #turnNotice { font-size: 20px; margin-top: 10px; color: #ffd700; }
+    #lastResult { margin-top: 8px; font-size: 16px; font-weight: bold; }
     .success { color: #7CFC00; }
     .failure { color: #ff6b6b; }
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.8</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.9</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -111,7 +78,7 @@
 
     let myColor = null;
     let roomCode = null;
-    let selectedIndex = null;     // 相手のカードを宣言するときに選んだindex
+    let selectedIndex = null;
 
     const createBtn = document.getElementById("createBtn");
     const joinBtn = document.getElementById("joinBtn");
@@ -128,7 +95,7 @@
         logs: [],
         lastResult: "",
         lastResultType: "",
-        pendingOpen: null,  // {player: "white", nextTurn: "black"}
+        pendingOpen: null,
         winner: null
       });
       myColor = "white";
@@ -152,7 +119,7 @@
       watchRoom();
     };
 
-    // カード24枚生成（白0〜11、黒0〜11）
+    // カード24枚生成
     function generateCards() {
       const all = [];
       for (let color of ["white", "black"]) {
@@ -165,96 +132,95 @@
       return all;
     }
 
-    // 宣言
+    // 宣言（成功→即オープン、失敗→自分が選んでオープン）
     async function makeGuess(targetIndex, guessNum) {
-      const snap = await get(ref(db, "rooms/" + roomCode));
-      const room = snap.val();
-      if (!room) return;
-      if (room.winner) return;
+      alert(`宣言：相手の${targetIndex}番を「${guessNum}」とした`);
+      try {
+        const snap = await get(ref(db, "rooms/" + roomCode));
+        const room = snap.val();
+        if (!room) { alert("部屋が見つからない"); return; }
+        if (room.winner) { alert("すでに勝敗がついてる"); return; }
 
-      // 誰かがオープン待ちなら先にそれを済ませる
-      if (room.pendingOpen) {
-        alert("先にオープンを選んでください");
-        return;
+        if (room.pendingOpen) {
+          alert("先にオープンするカードを選んでください");
+          return;
+        }
+
+        if (room.turn !== myColor) {
+          alert("相手の番だ");
+          return;
+        }
+
+        const opp = myColor === "white" ? "black" : "white";
+        const targetCard = room.players[opp].cards[targetIndex];
+        if (targetCard.open) {
+          alert("そのカードは開いている");
+          return;
+        }
+
+        let resultText = "";
+        let resultType = "";
+        let nextTurn = opp;
+        let pendingOpen = null;
+
+        if (targetCard.num === guessNum) {
+          // 成功
+          room.players[opp].cards[targetIndex].open = true;
+          resultText = `成功：相手の${targetIndex}番は「${guessNum}」だった。`;
+          resultType = "success";
+          nextTurn = myColor; // 連続アタック
+        } else {
+          // 失敗 → 自分が選ぶ
+          resultText = `失敗：自分の伏せカードを1枚オープンしてください。`;
+          resultType = "failure";
+          pendingOpen = { player: myColor, nextTurn: opp };
+          // ターンはいったんそのままにしておく（選び終わったらnextTurnへ）
+        }
+
+        const winner = checkWinner(room);
+
+        await update(ref(db, "rooms/" + roomCode), {
+          players: room.players,
+          turn: winner ? room.turn : nextTurn,
+          logs: [
+            ...room.logs,
+            { by: myColor, target: opp, index: targetIndex, guess: guessNum, result: resultType }
+          ],
+          lastResult: resultText,
+          lastResultType: resultType,
+          pendingOpen: pendingOpen,
+          winner
+        });
+
+        selectedIndex = null;
+      } catch (e) {
+        console.error(e);
+        alert("データベース書き込みでエラー：" + e.message);
       }
-
-      if (room.turn !== myColor) {
-        alert("相手の番だ");
-        return;
-      }
-
-      const opp = myColor === "white" ? "black" : "white";
-      const targetCard = room.players[opp].cards[targetIndex];
-      if (targetCard.open) {
-        alert("そのカードは開いている");
-        return;
-      }
-
-      let resultText = "";
-      let resultType = "";
-      let nextTurn = opp;
-      let pendingOpen = null;
-
-      if (targetCard.num === guessNum) {
-        // 成功
-        room.players[opp].cards[targetIndex].open = true;
-        resultText = `成功：相手の${targetIndex}番は「${guessNum}」だった。`;
-        resultType = "success";
-        nextTurn = myColor; // 連続アタック
-      } else {
-        // 失敗 → このプレイヤーに「自分のカードを選ばせる」フラグを立てる
-        resultText = `失敗：自分の伏せカードを1枚オープンしてください。`;
-        resultType = "failure";
-        pendingOpen = { player: myColor, nextTurn: opp };
-      }
-
-      const winner = checkWinner(room);
-
-      await update(ref(db, "rooms/" + roomCode), {
-        players: room.players,
-        turn: winner ? room.turn : nextTurn,
-        logs: [
-          ...room.logs,
-          {
-            by: myColor,
-            target: opp,
-            index: targetIndex,
-            guess: guessNum,
-            result: resultType
-          }
-        ],
-        lastResult: resultText,
-        lastResultType: resultType,
-        pendingOpen: pendingOpen,
-        winner
-      });
-
-      selectedIndex = null;
     }
 
-    // 失敗後に自分のカードをクリックして開ける処理
+    // 失敗後に自分のカードを開ける
     async function openMyCard(cardIndex) {
-      const snap = await get(ref(db, "rooms/" + roomCode));
-      const room = snap.val();
-      if (!room || !room.pendingOpen) return;
+      try {
+        const snap = await get(ref(db, "rooms/" + roomCode));
+        const room = snap.val();
+        if (!room || !room.pendingOpen) return;
+        if (room.pendingOpen.player !== myColor) return;
+        if (room.players[myColor].cards[cardIndex].open) return;
 
-      // 自分に対する要求か確認
-      if (room.pendingOpen.player !== myColor) return;
+        room.players[myColor].cards[cardIndex].open = true;
+        const nextTurn = room.pendingOpen.nextTurn;
 
-      // そのカードが伏せか確認
-      if (room.players[myColor].cards[cardIndex].open) return;
-
-      room.players[myColor].cards[cardIndex].open = true;
-
-      const nextTurn = room.pendingOpen.nextTurn;
-
-      await update(ref(db, "rooms/" + roomCode), {
-        players: room.players,
-        turn: nextTurn,
-        pendingOpen: null,
-        lastResult: `失敗：自分の${cardIndex}番を公開。`,
-        lastResultType: "failure"
-      });
+        await update(ref(db, "rooms/" + roomCode), {
+          players: room.players,
+          turn: nextTurn,
+          pendingOpen: null,
+          lastResult: `失敗：自分の${cardIndex}番を公開。`,
+          lastResultType: "failure"
+        });
+      } catch (e) {
+        alert("自分のカードを開けるときのエラー：" + e.message);
+      }
     }
 
     function checkWinner(room) {
@@ -302,15 +268,14 @@
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
-      // 相手カード（宣言用）
+      // 相手カード
       room.players[opp].cards.forEach((c,i)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
         if(!c.open) div.classList.add("closed");
         div.textContent=c.open?c.num:"?";
         div.onclick=()=>{
-          // 誰かがオープン待ちなら宣言先を変えない
-          if(room.pendingOpen) return;
+          if(room.pendingOpen) return;      // オープン待ちは宣言できない
           if(room.turn!==myColor) return;
           document.querySelectorAll(".card").forEach(el=>el.classList.remove("selected"));
           div.classList.add("selected");
@@ -320,19 +285,17 @@
         oppDiv.appendChild(div);
       });
 
-      // 自分カード（オープン選択対応）
+      // 自分カード
       room.players[myColor].cards.forEach((c,idx)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
         div.textContent=c.num;
         div.classList.add(c.open ? "self-open" : "self-closed");
 
-        // pendingOpen が自分宛てのときだけ、伏せカードをクリックで開ける
         if (room.pendingOpen && room.pendingOpen.player === myColor && !c.open) {
           div.onclick = () => openMyCard(idx);
           div.style.cursor = "pointer";
         } else {
-          // それ以外はクリック無効
           div.onclick = null;
           div.style.cursor = "default";
         }
@@ -355,11 +318,8 @@
       lastResultDiv.innerText = room.lastResult || "";
       lastResultDiv.className = "";
       lastResultDiv.id = "lastResult";
-      if (room.lastResultType === "success") {
-        lastResultDiv.classList.add("success");
-      } else if (room.lastResultType === "failure") {
-        lastResultDiv.classList.add("failure");
-      }
+      if (room.lastResultType === "success") lastResultDiv.classList.add("success");
+      if (room.lastResultType === "failure") lastResultDiv.classList.add("failure");
 
       // ログ
       const logDiv=document.getElementById("log");
