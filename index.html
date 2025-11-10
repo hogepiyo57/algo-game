@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.2</title>
+<title>ALGO ONLINE Ver3.3</title>
 <style>
 body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
 h1{background:#333;margin:0;padding:12px;font-size:24px;}
@@ -26,7 +26,7 @@ input{padding:8px;font-size:16px;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver3.2</small></h1>
+<h1>ALGO ONLINE <small>Ver3.3</small></h1>
 
 <!-- ロビー -->
 <div id="lobby" class="screen active">
@@ -67,19 +67,24 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-let roomId=null, playerId=null, opponentId=null, state=null, selectedTarget=null;
+let roomId=null, playerId=null, opponentId=null;
+let state=null;
+let selectedTarget=null;
 let drawDone=false;
 
+// ユーティリティ
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
 function sortCards(cards){cards.sort((a,b)=>(a.num===b.num?(a.color==="black"?-1:1):a.num-b.num));}
 
-//================ ロビー ================
+// ロビー操作
 document.getElementById("createRoom").onclick=async()=>{
   roomId=Math.floor(1000+Math.random()*9000).toString();
   playerId="white"; opponentId="black";
   await createNewRoom(roomId);
   document.getElementById("roomCodeDisplay").textContent=roomId;
   document.getElementById("lobbyMessage").textContent=`コード ${roomId} を相手に伝えてください。`;
+  // ホストもすぐゲーム画面へ
+  switchToGame();
 };
 
 document.getElementById("joinRoom").onclick=async()=>{
@@ -92,131 +97,164 @@ document.getElementById("joinRoom").onclick=async()=>{
   switchToGame();
 };
 
+// ルーム作成（テスト用にblackもconnected:trueにしておく）
 async function createNewRoom(id){
-  const deck=[];["white","black"].forEach(c=>{for(let n=0;n<=11;n++)deck.push({num:n,color:c});});
+  const deck=[];
+  ["white","black"].forEach(c=>{
+    for(let n=0;n<=11;n++) deck.push({num:n,color:c});
+  });
   shuffle(deck);
-  const whiteCards=deck.splice(0,4), blackCards=deck.splice(0,4);
-  sortCards(whiteCards); sortCards(blackCards);
+  const whiteCards=deck.splice(0,4);
+  const blackCards=deck.splice(0,4);
+  sortCards(whiteCards);
+  sortCards(blackCards);
   const data={
     players:{
       white:{cards:whiteCards,connected:true},
-      black:{cards:blackCards,connected:false}
+      black:{cards:blackCards,connected:true}  // ★ここをtrueにして1人でも表示できるようにする
     },
-    deck, turn:"white", message:"", winner:null
+    deck,
+    turn:"white",
+    message:"",
+    winner:null
   };
   await set(ref(db,`rooms/${id}`),data);
 }
 
-//================ ゲーム開始 ================
+// 画面切り替え
 function switchToGame(){
   document.getElementById("lobby").classList.remove("active");
   document.getElementById("game").classList.add("active");
   startGameListener();
 }
 
+// 監視
 function startGameListener(){
-  onValue(ref(db,`rooms/${roomId}`),async snap=>{
-    if(!snap.exists())return;
-    state=snap.val();
-    if(state.players.white.connected&&state.players.black.connected){
-      // 自分のターンでカードをまだ引いていないときに引く
-      if(state.turn===playerId && !drawDone && state.deck.length>0){
-        drawDone=true;
-        const card=state.deck.pop();
-        state.players[playerId].cards.push(card);
-        sortCards(state.players[playerId].cards);
-        state.message=`${playerId} がカードを引いた`;
-        await update(ref(db,`rooms/${roomId}`),state);
-      }
-      render();
+  onValue(ref(db,`rooms/${roomId}`), async (snap)=>{
+    if(!snap.exists()) return;
+    state = snap.val();
+
+    // 手番開始時に自動ドロー
+    if (state.turn === playerId && !drawDone && state.deck && state.deck.length > 0) {
+      drawDone = true;
+      const card = state.deck.pop();
+      state.players[playerId].cards.push(card);
+      sortCards(state.players[playerId].cards);
+      state.message = "カードを1枚引きました";
+      await update(ref(db,`rooms/${roomId}`), state);
     }
+
+    render();
   });
 }
 
-//================ 描画 ================
+// 描画
 function render(){
-  const my=state.players[playerId], op=state.players[opponentId];
-  const status=document.getElementById("status");
-  status.classList.toggle("turn-active",state.turn===playerId);
-  status.textContent=state.winner?`${state.winner}の勝ち！`:
-    state.turn===playerId?"あなたの番です！":"相手の番です";
+  if (!state) return;
+  const my = state.players[playerId];
+  const op = state.players[opponentId];
 
-  const pb=document.getElementById("playerBoard");
-  pb.innerHTML="";
-  my.cards.forEach((c,i)=>{
-    const div=document.createElement("div");
-    div.className=`card ${c.color} ${c.open?"":"hidden"}`;
-    div.textContent=c.open?c.num:"?";
-    if(state.turn===playerId && c.open!==true && state.message==="失敗…カードを選んでください")div.onclick=()=>openMyCard(i);
+  // ステータス
+  const status = document.getElementById("status");
+  status.classList.toggle("turn-active", state.turn === playerId);
+  status.textContent = state.winner
+    ? `${state.winner}の勝ち！`
+    : (state.turn === playerId ? "あなたの番です！" : "相手の番です");
+
+  // 自分
+  const pb = document.getElementById("playerBoard");
+  pb.innerHTML = "";
+  (my.cards || []).forEach((c,i)=>{
+    const div = document.createElement("div");
+    div.className = `card ${c.color} ${c.open ? "" : "hidden"}`;
+    div.textContent = c.open ? c.num : "?";
+    // 失敗時にだけ自分のカードを選択できる
+    if (state.turn === playerId && state.message === "失敗…カードを選んでください" && !c.open) {
+      div.onclick = () => openMyCard(i);
+      div.style.cursor = "pointer";
+    }
     pb.appendChild(div);
   });
 
-  const ob=document.getElementById("opponentBoard");
-  ob.innerHTML="";
-  op.cards.forEach((c,i)=>{
-    const div=document.createElement("div");
-    div.className=`card ${c.open?c.color:"hidden"}`;
-    div.textContent=c.open?c.num:"?";
-    if(state.turn===playerId&&!c.open&&state.message!=="失敗…カードを選んでください")
-      div.onclick=()=>{selectedTarget=i;};
+  // 相手
+  const ob = document.getElementById("opponentBoard");
+  ob.innerHTML = "";
+  (op.cards || []).forEach((c,i)=>{
+    const div = document.createElement("div");
+    div.className = `card ${c.open ? c.color : "hidden"}`;
+    div.textContent = c.open ? c.num : "?";
+    // 自分の番で、失敗でカード選択中でないときだけ相手を指定できる
+    if (state.turn === playerId && state.message !== "失敗…カードを選んでください" && !c.open) {
+      div.onclick = () => { selectedTarget = i; };
+    }
     ob.appendChild(div);
   });
 
-  document.getElementById("message").textContent=state.message||"";
-  const btns=document.querySelectorAll("#numberButtons button,#stayBtn");
-  btns.forEach(b=>b.disabled=state.turn!==playerId||state.winner||state.message==="失敗…カードを選んでください");
+  // メッセージ
+  document.getElementById("message").textContent = state.message || "";
+
+  // ボタン有効/無効
+  const disable = (state.turn !== playerId) || state.winner || state.message === "失敗…カードを選んでください";
+  document.querySelectorAll("#numberButtons button, #stayBtn").forEach(b => b.disabled = disable);
 }
 
-//================ ボタン群 ================
-for(let n=0;n<=11;n++){
-  const b=document.createElement("button");
-  b.textContent=n;
-  b.onclick=()=>attack(n);
+// 数字ボタン作成
+for (let n=0; n<=11; n++){
+  const b = document.createElement("button");
+  b.textContent = n;
+  b.onclick = () => attack(n);
   document.getElementById("numberButtons").appendChild(b);
 }
-document.getElementById("stayBtn").onclick=()=>stayTurn();
-document.getElementById("resetBtn").onclick=()=>resetRoom();
 
-//================ 攻撃・ステイ・リセット ================
+// アタック
 async function attack(num){
-  if(selectedTarget==null)return;
-  const op=state.players[opponentId];
-  const my=state.players[playerId];
-  const t=op.cards[selectedTarget];
-  let msg="";
-  if(t.num===num){
-    t.open=true;
-    msg=`正解！${num}`;
-    if(op.cards.every(c=>c.open))state.winner=playerId;
-  }else{
-    msg="失敗…カードを選んでください";
+  if (selectedTarget == null) return;
+  const op = state.players[opponentId];
+  const my = state.players[playerId];
+  const target = op.cards[selectedTarget];
+  let msg = "";
+
+  if (target.num === num) {
+    target.open = true;
+    msg = `正解！ ${num}`;
+    // 全部開いたら勝ち
+    if (op.cards.every(c=>c.open)) {
+      state.winner = playerId;
+      msg = "勝利！";
+    }
+  } else {
+    msg = "失敗…カードを選んでください";
   }
-  state.message=msg;
-  selectedTarget=null;
-  await update(ref(db,`rooms/${roomId}`),state);
+
+  state.message = msg;
+  selectedTarget = null;
+  await update(ref(db,`rooms/${roomId}`), state);
 }
 
+// 失敗時に自分のカードを開ける
 async function openMyCard(index){
-  const my=state.players[playerId];
-  my.cards[index].open=true;
-  state.turn=opponentId;
-  state.message="ターン交代";
-  drawDone=false;
-  await update(ref(db,`rooms/${roomId}`),state);
+  const my = state.players[playerId];
+  my.cards[index].open = true;
+  state.turn = opponentId;
+  state.message = "ターン交代";
+  drawDone = false;
+  await update(ref(db,`rooms/${roomId}`), state);
 }
 
-async function stayTurn(){
-  state.turn=opponentId;
-  state.message="ステイしました";
-  drawDone=false;
-  await update(ref(db,`rooms/${roomId}`),state);
-}
+// ステイ
+document.getElementById("stayBtn").onclick = async () => {
+  state.turn = opponentId;
+  state.message = "ステイしました";
+  drawDone = false;
+  await update(ref(db,`rooms/${roomId}`), state);
+};
 
-async function resetRoom(){
-  if(!roomId)return;
+// リセット
+document.getElementById("resetBtn").onclick = async () => {
+  if (!roomId) return;
   await remove(ref(db,`rooms/${roomId}`));
   location.reload();
-}
+};
 </script>
 </body>
 </html>
