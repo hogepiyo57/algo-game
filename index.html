@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.7</title>
+<title>ALGO ONLINE Ver3.8</title>
 <style>
 body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
 h1{background:#333;margin:0;padding:12px;font-size:24px;}
@@ -12,19 +12,19 @@ h1{background:#333;margin:0;padding:12px;font-size:24px;}
 .card{
   width:50px;height:70px;border-radius:6px;
   display:flex;justify-content:center;align-items:center;
-  font-weight:bold;cursor:pointer;border:1px solid #888;
+  font-weight:bold;font-size:20px;cursor:pointer;border:1px solid #888;
 }
 .white{background:#fff;color:#000;}
 .black{background:#000;color:#fff;}
 .self-closed{box-shadow:0 0 0 3px #555 inset;}
 .self-open{box-shadow:0 0 0 3px #0f0 inset;}
-.opp-hidden-white{background:#fff;color:#000;}
-.opp-hidden-black{background:#000;color:#fff;}
+.opp-hidden-white{background:#fff;color:#fff;}
+.opp-hidden-black{background:#000;color:#000;}
 button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;cursor:pointer;}
 #numberButtons button{background:#444;color:#fff;}
 #stayBtn{background:#777;color:#fff;}
-#resetBtn{background:#a33;color:#fff;}
-#numberButtons button:hover,#stayBtn:hover,#resetBtn:hover{background:#999;}
+#resetBtn,#retryBtn{background:#a33;color:#fff;}
+#numberButtons button:hover,#stayBtn:hover,#resetBtn:hover,#retryBtn:hover{background:#999;}
 #status{font-size:18px;margin:10px;}
 input{padding:8px;font-size:16px;}
 #roomCodeDisplay,#gameRoomCode{font-size:20px;color:#0f0;font-weight:bold;margin:6px;}
@@ -32,7 +32,7 @@ input{padding:8px;font-size:16px;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver3.7</small></h1>
+<h1>ALGO ONLINE <small>Ver3.8</small></h1>
 
 <!-- ロビー -->
 <div id="lobby" class="screen active">
@@ -54,6 +54,7 @@ input{padding:8px;font-size:16px;}
   <div id="playerBoard" class="board"></div>
   <div id="numberButtons"></div>
   <button id="stayBtn">ステイ</button>
+  <button id="retryBtn" style="display:none;">もう一回</button>
   <button id="resetBtn">初期化</button>
   <div id="message"></div>
 </div>
@@ -117,7 +118,7 @@ async function createNewRoom(id){
   const data={
     players:{
       white:{cards:whiteCards,connected:true},
-      black:{cards:blackCards,connected:true} // テスト用でtrue
+      black:{cards:blackCards,connected:true}
     },
     deck,
     turn:"white",
@@ -127,7 +128,7 @@ async function createNewRoom(id){
   await set(ref(db,`rooms/${id}`),data);
 }
 
-// 画面切り替え
+// 画面切替
 function switchToGame(){
   document.getElementById("lobby").classList.remove("active");
   document.getElementById("game").classList.add("active");
@@ -160,14 +161,13 @@ function render(){
   if(!state) return;
   const my = state.players[playerId];
   const op = state.players[opponentId];
-
   const status = document.getElementById("status");
 
   if (state.winner) {
-    // 自分目線で表示
     status.textContent = (state.winner === playerId) ? "あなたの勝ち" : "あなたの負け";
-    status.classList.remove("turn-active");
+    document.getElementById("retryBtn").style.display = "inline-block";
   } else {
+    document.getElementById("retryBtn").style.display = "none";
     status.classList.toggle("turn-active", state.turn === playerId);
     status.textContent = state.turn === playerId ? "あなたの番です！" : "相手の番です";
   }
@@ -177,11 +177,7 @@ function render(){
   pb.innerHTML = "";
   (my.cards || []).forEach((c,i)=>{
     const div = document.createElement("div");
-    if (c.open) {
-      div.className = `card ${c.color} self-open`;
-    } else {
-      div.className = `card ${c.color} self-closed`;
-    }
+    div.className = `card ${c.color} ${c.open ? "self-open" : "self-closed"}`;
     div.textContent = c.num;
     if (!state.winner &&
         state.turn === playerId &&
@@ -193,7 +189,7 @@ function render(){
     pb.appendChild(div);
   });
 
-  // 相手のカード（色は分かる）
+  // 相手のカード（色はわかる）
   const ob = document.getElementById("opponentBoard");
   ob.innerHTML = "";
   (op.cards || []).forEach((c,i)=>{
@@ -203,7 +199,7 @@ function render(){
       div.textContent = c.num;
     } else {
       div.className = c.color === "white" ? "card opp-hidden-white" : "card opp-hidden-black";
-      div.textContent = "?";
+      div.textContent = ""; // 「？」削除
     }
     if (!state.winner &&
         state.turn === playerId &&
@@ -271,6 +267,12 @@ document.getElementById("stayBtn").onclick = async () => {
   state.message = "ステイしました";
   drawDone = false;
   await update(ref(db,`rooms/${roomId}`), state);
+};
+
+// もう一回
+document.getElementById("retryBtn").onclick = async () => {
+  if (!roomId) return;
+  await createNewRoom(roomId);
 };
 
 // リセット
