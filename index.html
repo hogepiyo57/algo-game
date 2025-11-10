@@ -2,54 +2,23 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver2.1</title>
+<title>ALGO ONLINE Ver2.2</title>
 <style>
-  body {
-    background: #222;
-    color: #eee;
-    font-family: "Segoe UI", sans-serif;
-    text-align: center;
-    margin: 0;
-    padding: 0;
-  }
-  h1 {
-    background: #333;
-    margin: 0;
-    padding: 12px;
-    font-size: 24px;
-  }
-  #status {
-    font-size: 18px;
-    margin: 10px;
-  }
-  .board {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin: 10px;
-  }
+  body { background: #222; color: #eee; font-family: "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 0; }
+  h1 { background: #333; margin: 0; padding: 12px; font-size: 24px; }
+  #status { font-size: 18px; margin: 10px; }
+  .board { display: flex; justify-content: center; gap: 8px; margin: 10px; }
   .card {
-    width: 50px;
-    height: 70px;
-    border-radius: 6px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-weight: bold;
-    cursor: pointer;
-    border: 1px solid #888;
-    user-select: none;
+    width: 50px; height: 70px; border-radius: 6px;
+    display: flex; justify-content: center; align-items: center;
+    font-weight: bold; cursor: pointer; border: 1px solid #888; user-select: none;
   }
   .white { background: #fff; color: #000; }
   .black { background: #000; color: #fff; }
   .hidden { background: #555; color: transparent; border: 1px solid #aaa; }
   #numberButtons button, #stayBtn, #resetBtn {
-    margin: 5px;
-    padding: 10px 14px;
-    font-size: 16px;
-    cursor: pointer;
-    border: none;
-    border-radius: 6px;
+    margin: 5px; padding: 10px 14px; font-size: 16px;
+    cursor: pointer; border: none; border-radius: 6px;
   }
   #numberButtons button { background: #444; color: #fff; }
   #stayBtn { background: #777; color: #fff; }
@@ -59,7 +28,7 @@
 </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <small>Ver2.1</small></h1>
+  <h1>ALGO ONLINE <small>Ver2.2</small></h1>
   <button id="resetBtn">初期化</button>
   <div id="status"></div>
 
@@ -75,7 +44,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, set, get, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
 // ================== Firebase設定 ==================
 const firebaseConfig = {
@@ -91,16 +60,13 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ================== ゲームデータ ==================
-const roomId = "demo-room"; // 固定ルーム（後でコード対応可）
+const roomId = "demo-room"; // テスト用固定
 const playerId = Math.random() < 0.5 ? "white" : "black";
 const opponentId = playerId === "white" ? "black" : "white";
 
 let state = {
   deck: [],
-  players: {
-    white: { cards: [], open: [] },
-    black: { cards: [], open: [] }
-  },
+  players: { white: { cards: [] }, black: { cards: [] } },
   turn: "white",
   message: "",
   winner: null
@@ -108,6 +74,7 @@ let state = {
 
 // ================== 強制初期化 ==================
 document.getElementById("resetBtn").onclick = async () => {
+  await remove(ref(db, `rooms/${roomId}`)); // 前データ削除
   const deck = [];
   ["white", "black"].forEach(color => {
     for (let n = 0; n <= 11; n++) deck.push({ num: n, color });
@@ -120,27 +87,28 @@ document.getElementById("resetBtn").onclick = async () => {
   sortCards(blackCards);
 
   state = {
-    deck: deck,
+    deck,
     players: {
-      white: { cards: whiteCards, open: [] },
-      black: { cards: blackCards, open: [] }
+      white: { cards: whiteCards },
+      black: { cards: blackCards }
     },
     turn: "white",
-    message: "初期配布完了",
+    message: "新しいカードを配りました。",
     winner: null
   };
 
   await set(ref(db, `rooms/${roomId}`), state);
+  render();
   alert("初期化完了。カードを再配布しました。");
 };
 
 // ================== 初期化処理 ==================
 async function initGame() {
   const snapshot = await get(ref(db, `rooms/${roomId}`));
-  if (!snapshot.exists()) {
-    document.getElementById("message").textContent = "初期化ボタンで開始してください。";
-  } else {
+  if (snapshot.exists()) {
     state = snapshot.val();
+  } else {
+    document.getElementById("message").textContent = "初期化ボタンで開始してください。";
   }
   onValue(ref(db, `rooms/${roomId}`), snap => {
     if (snap.exists()) {
@@ -166,28 +134,31 @@ function render() {
 
   const pb = document.getElementById("playerBoard");
   pb.innerHTML = "";
-  my.cards.forEach((c,i)=>{
-    const div=document.createElement("div");
-    div.className=`card ${c.color} ${c.open?"":"hidden"}`;
-    div.textContent=c.open?c.num:"?";
-    pb.appendChild(div);
-  });
+  if (my && my.cards) {
+    my.cards.forEach((c,i)=>{
+      const div=document.createElement("div");
+      div.className=`card ${c.color} ${c.open?"":"hidden"}`;
+      div.textContent=c.open?c.num:"?";
+      pb.appendChild(div);
+    });
+  }
 
   const ob = document.getElementById("opponentBoard");
   ob.innerHTML = "";
-  op.cards.forEach((c,i)=>{
-    const div=document.createElement("div");
-    div.className=`card ${c.open?c.color:"hidden"}`;
-    div.textContent=c.open?c.num:"?";
-    if(state.turn===playerId && !c.open){
-      div.onclick=()=>selectTarget(i);
-    }
-    ob.appendChild(div);
-  });
+  if (op && op.cards) {
+    op.cards.forEach((c,i)=>{
+      const div=document.createElement("div");
+      div.className=`card ${c.open?c.color:"hidden"}`;
+      div.textContent=c.open?c.num:"?";
+      if(state.turn===playerId && !c.open){
+        div.onclick=()=>selectTarget(i);
+      }
+      ob.appendChild(div);
+    });
+  }
 
   document.getElementById("message").textContent = state.message || "";
 
-  // ボタン制御
   const buttons = document.querySelectorAll("#numberButtons button, #stayBtn");
   buttons.forEach(b=>{
     b.disabled = state.turn !== playerId || state.winner;
