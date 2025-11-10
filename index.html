@@ -1,337 +1,247 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.10</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; background: #222; color: #fff; }
-    h1 { font-size: 36px; margin-bottom: 5px; }
-    .version { font-size: 14px; color: #aaa; margin-left: 8px; }
-    #game, #joinArea { display: none; }
-    .card-row { display: flex; justify-content: center; gap: 10px; margin: 10px 0; }
-    .card {
-      width: 60px; height: 80px; border-radius: 8px;
-      display: flex; justify-content: center; align-items: center;
-      font-size: 22px; font-weight: bold; cursor: pointer; transition: transform 0.2s;
-    }
-    .card:hover { transform: scale(1.1); }
-    .closed { background: gray; color: transparent; }
-    .white-card { background: #fff; color: #000; border: 2px solid #000; }
-    .black-card { background: #000; color: #fff; border: 2px solid #fff; }
-    .selected { outline: 4px solid yellow; }
-    .self-closed { box-shadow: 0 0 0 3px #555 inset; }
-    .self-open   { box-shadow: 0 0 0 3px #38c172 inset; }
-    button { padding: 6px 12px; margin: 8px; cursor: pointer; }
-    #numberSelect { display: flex; justify-content: center; gap: 5px; margin: 10px 0; flex-wrap: wrap; }
-    #numberSelect button { width: 40px; height: 40px; font-size: 18px; }
-    #log { margin-top: 20px; max-height: 200px; overflow-y: auto; text-align: left; }
-    #turnNotice { font-size: 20px; margin-top: 10px; color: #ffd700; }
-    #lastResult { margin-top: 8px; font-size: 16px; font-weight: bold; }
-    .success { color: #7CFC00; }
-    .failure { color: #ff6b6b; }
-  </style>
+<meta charset="UTF-8">
+<title>ALGO ONLINE Ver2.0</title>
+<style>
+  body {
+    background: #222;
+    color: #eee;
+    font-family: "Segoe UI", sans-serif;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    background: #333;
+    margin: 0;
+    padding: 12px;
+    font-size: 24px;
+  }
+  #status {
+    font-size: 18px;
+    margin: 10px;
+  }
+  .board {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 10px;
+  }
+  .card {
+    width: 50px;
+    height: 70px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    cursor: pointer;
+    border: 1px solid #888;
+    user-select: none;
+  }
+  .white { background: #fff; color: #000; }
+  .black { background: #000; color: #fff; }
+  .hidden { background: #555; color: transparent; border: 1px solid #aaa; }
+  #numberButtons button, #stayBtn {
+    margin: 5px;
+    padding: 10px 14px;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+  }
+  #numberButtons button { background: #444; color: #fff; }
+  #stayBtn { background: #777; color: #fff; }
+  #numberButtons button:hover, #stayBtn:hover { background: #999; }
+  #message { margin-top: 12px; height: 24px; }
+</style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.10</span></h1>
+  <h1>ALGO ONLINE <small>Ver2.0</small></h1>
+  <div id="status"></div>
 
-  <div id="menu">
-    <button id="createBtn">ゲームコード発行</button>
-    <button id="joinBtn">入室する</button>
-  </div>
+  <h2>相手</h2>
+  <div id="opponentBoard" class="board"></div>
 
-  <div id="joinArea">
-    <input type="number" id="roomCodeInput" placeholder="4桁のコード">
-    <button id="enterRoom">入室</button>
-  </div>
+  <h2>自分</h2>
+  <div id="playerBoard" class="board"></div>
 
-  <div id="game">
-    <h2 id="status"></h2>
-    <div id="turnNotice"></div>
-    <div id="lastResult"></div>
+  <div id="numberButtons"></div>
+  <button id="stayBtn">ステイ</button>
+  <div id="message"></div>
 
-    <h3>相手のカード</h3>
-    <div id="opponentCards" class="card-row"></div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-    <h3>自分のカード</h3>
-    <div id="myCards" class="card-row"></div>
+// ================== Firebase設定 ==================
+const firebaseConfig = {
+  apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
+  authDomain: "algo-e0da0.firebaseapp.com",
+  databaseURL: "https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "algo-e0da0",
+  storageBucket: "algo-e0da0.firebasestorage.app",
+  messagingSenderId: "87259521629",
+  appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-    <div id="numberSelect"></div>
-    <div id="log"></div>
-  </div>
+// ================== ゲームデータ ==================
+const roomId = "demo-room"; // 固定ルーム（後でコード対応可）
+const playerId = Math.random() < 0.5 ? "white" : "black";
+const opponentId = playerId === "white" ? "black" : "white";
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+let state = {
+  deck: [],
+  players: {
+    white: { cards: [], open: [] },
+    black: { cards: [], open: [] }
+  },
+  turn: "white",
+  message: "",
+  winner: null
+};
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
-      authDomain: "algo-e0da0.firebaseapp.com",
-      databaseURL: "https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "algo-e0da0",
-      storageBucket: "algo-e0da0.firebasestorage.app",
-      messagingSenderId: "87259521629",
-      appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
-    };
+// ================== 初期化 ==================
+async function initGame() {
+  const snapshot = await get(ref(db, `rooms/${roomId}`));
+  if (!snapshot.exists()) {
+    // デッキ作成（黒白各0〜11）
+    const deck = [];
+    ["white", "black"].forEach(color => {
+      for (let n = 0; n <= 11; n++) deck.push({ num: n, color });
+    });
+    shuffle(deck);
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    const whiteCards = deck.splice(0, 4);
+    const blackCards = deck.splice(0, 4);
+    sortCards(whiteCards);
+    sortCards(blackCards);
 
-    let myColor = null;
-    let roomCode = null;
-    let selectedIndex = null;
-
-    const createBtn = document.getElementById("createBtn");
-    const joinBtn = document.getElementById("joinBtn");
-    const enterRoom = document.getElementById("enterRoom");
-
-    // ルーム作成
-    createBtn.onclick = async () => {
-      roomCode = Math.floor(Math.random() * 9000) + 1000;
-      const cards = generateCards();
-      await set(ref(db, "rooms/" + roomCode), {
-        players: { white: { cards: cards.slice(0,4) }, black: { cards: cards.slice(4,8) } },
-        deck: cards.slice(8),
-        turn: "white",
-        logs: [],
-        lastResult: "",
-        lastResultType: "",
-        pendingOpen: null,
-        winner: null
-      });
-      myColor = "white";
-      alert("ルームコード: " + roomCode);
-      startGame();
-      watchRoom();
-    };
-
-    // 入室
-    joinBtn.onclick = () => {
-      document.getElementById("joinArea").style.display = "block";
-    };
-
-    enterRoom.onclick = async () => {
-      roomCode = document.getElementById("roomCodeInput").value;
-      if (!roomCode) return alert("コードを入力せよ");
-      const snap = await get(ref(db, "rooms/" + roomCode));
-      if (!snap.exists()) return alert("ルームが存在しない");
-      myColor = "black";
-      startGame();
-      watchRoom();
-    };
-
-    // カード24枚生成
-    function generateCards() {
-      const all = [];
-      for (let color of ["white", "black"]) {
-        for (let i = 0; i <= 11; i++) all.push({ color, num: i, open: false });
-      }
-      for (let i = all.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [all[i], all[j]] = [all[j], all[i]];
-      }
-      return all;
+    state.deck = deck;
+    state.players.white.cards = whiteCards;
+    state.players.black.cards = blackCards;
+    await set(ref(db, `rooms/${roomId}`), state);
+  } else {
+    state = snapshot.val();
+  }
+  onValue(ref(db, `rooms/${roomId}`), snap => {
+    if (snap.exists()) {
+      state = snap.val();
+      render();
     }
+  });
+}
 
-    // 宣言
-    async function makeGuess(targetIndex, guessNum) {
-      alert(`宣言：相手の${targetIndex}番を「${guessNum}」とした`);
-      try {
-        const snap = await get(ref(db, "rooms/" + roomCode));
-        const room = snap.val();
-        if (!room) { alert("部屋が見つからない"); return; }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
+function sortCards(cards){
+  cards.sort((a,b)=>(a.num===b.num ? (a.color==="black"?-1:1) : a.num-b.num));
+}
 
-        const logs = Array.isArray(room.logs) ? room.logs : [];
-        const players = room.players || { white: {cards:[]}, black:{cards:[]} };
+// ================== 描画 ==================
+function render() {
+  const my = state.players[playerId];
+  const op = state.players[opponentId];
 
-        if (room.winner) { alert("すでに勝敗がついてる"); return; }
-        if (room.pendingOpen) { alert("先にオープンするカードを選んでください"); return; }
-        if (room.turn !== myColor) { alert("相手の番だ"); return; }
+  document.getElementById("status").textContent =
+    state.winner ? `${state.winner}の勝ち！` :
+    state.turn === playerId ? "あなたの番です" : "相手の番です";
 
-        const opp = myColor === "white" ? "black" : "white";
-        const targetCard = players[opp].cards[targetIndex];
-        if (!targetCard) { alert("そのカードは存在しない"); return; }
-        if (targetCard.open) { alert("そのカードは開いている"); return; }
+  const pb = document.getElementById("playerBoard");
+  pb.innerHTML = "";
+  my.cards.forEach((c,i)=>{
+    const div=document.createElement("div");
+    div.className=`card ${c.open?"":""} ${c.color} ${c.open?"":"hidden"}`;
+    div.textContent=c.open?c.num:"?";
+    div.onclick=()=>{};
+    pb.appendChild(div);
+  });
 
-        let resultText = "";
-        let resultType = "";
-        let nextTurn = opp;
-        let pendingOpen = null;
-
-        if (targetCard.num === guessNum) {
-          players[opp].cards[targetIndex].open = true;
-          resultText = `成功：相手の${targetIndex}番は「${guessNum}」だった。`;
-          resultType = "success";
-          nextTurn = myColor; // 連続
-        } else {
-          resultText = `失敗：自分の伏せカードを1枚オープンしてください。`;
-          resultType = "failure";
-          pendingOpen = { player: myColor, nextTurn: opp };
-        }
-
-        const winner = checkWinner({ ...room, players });
-
-        await update(ref(db, "rooms/" + roomCode), {
-          players,
-          turn: winner ? room.turn : nextTurn,
-          logs: [
-            ...logs,
-            { by: myColor, target: opp, index: targetIndex, guess: guessNum, result: resultType }
-          ],
-          lastResult: resultText,
-          lastResultType: resultType,
-          pendingOpen,
-          winner
-        });
-
-        selectedIndex = null;
-      } catch (e) {
-        console.error(e);
-        alert("データベース書き込みでエラー：" + e.message);
-      }
+  const ob = document.getElementById("opponentBoard");
+  ob.innerHTML = "";
+  op.cards.forEach((c,i)=>{
+    const div=document.createElement("div");
+    div.className=`card ${c.open?c.color:"hidden"}`;
+    div.textContent=c.open?c.num:"?";
+    if(state.turn===playerId && !c.open){
+      div.onclick=()=>selectTarget(i);
     }
+    ob.appendChild(div);
+  });
 
-    // 自分のカードを開く
-    async function openMyCard(cardIndex) {
-      try {
-        const snap = await get(ref(db, "rooms/" + roomCode));
-        const room = snap.val();
-        if (!room || !room.pendingOpen) return;
-        if (room.pendingOpen.player !== myColor) return;
+  document.getElementById("message").textContent = state.message || "";
 
-        const players = room.players;
-        if (players[myColor].cards[cardIndex].open) return;
+  // 数字ボタン有効化
+  const buttons = document.querySelectorAll("#numberButtons button, #stayBtn");
+  buttons.forEach(b=>{
+    b.disabled = state.turn !== playerId || state.winner;
+  });
+}
 
-        players[myColor].cards[cardIndex].open = true;
-        const nextTurn = room.pendingOpen.nextTurn;
+function selectTarget(i){
+  selectedTarget = i;
+  document.getElementById("message").textContent = `相手の${i+1}番を選択中`;
+}
 
-        await update(ref(db, "rooms/" + roomCode), {
-          players,
-          turn: nextTurn,
-          pendingOpen: null,
-          lastResult: `失敗：自分の${cardIndex}番を公開。`,
-          lastResultType: "failure"
-        });
-      } catch (e) {
-        alert("自分のカードを開くときのエラー：" + e.message);
-      }
+let selectedTarget = null;
+const nb = document.getElementById("numberButtons");
+for(let n=0;n<=11;n++){
+  const btn=document.createElement("button");
+  btn.textContent=n;
+  btn.onclick=()=>attack(n);
+  nb.appendChild(btn);
+}
+document.getElementById("stayBtn").onclick=()=>stayTurn();
+
+// ================== アクション ==================
+async function attack(num){
+  if(selectedTarget===null) return;
+  const op = state.players[opponentId];
+  const my = state.players[playerId];
+  const target = op.cards[selectedTarget];
+
+  let msg="";
+  if(target.num===num){
+    target.open=true;
+    msg=`正解！相手の${selectedTarget+1}番は${num}`;
+    if(op.cards.every(c=>c.open)){
+      state.winner=playerId;
+      msg="勝利！";
     }
+  } else {
+    msg=`失敗…${num}ではなかった`;
+    const unopened=my.cards.find(c=>!c.open);
+    if(unopened){ unopened.open=true; }
+    else { state.winner=opponentId; msg="敗北…"; }
+    state.turn=opponentId;
+  }
 
-    function checkWinner(room) {
-      if (!room.players) return null;
-      for (const color of ["white","black"]) {
-        const cards = room.players[color].cards || [];
-        const allOpen = cards.length > 0 && cards.every(c=>c.open);
-        if (allOpen) return color==="white"?"black":"white";
-      }
-      return null;
-    }
+  state.message=msg;
+  await update(ref(db,`rooms/${roomId}`),state);
+  selectedTarget=null;
+}
 
-    function startGame() {
-      document.getElementById("menu").style.display = "none";
-      document.getElementById("joinArea").style.display = "none";
-      document.getElementById("game").style.display = "block";
-      document.getElementById("status").innerText = `ルームコード: ${roomCode}`;
-      setupNumberButtons();
-    }
+async function stayTurn(){
+  state.turn=opponentId;
+  state.message="ステイしました";
+  await update(ref(db,`rooms/${roomId}`),state);
+}
 
-    function setupNumberButtons() {
-      const numDiv = document.getElementById("numberSelect");
-      numDiv.innerHTML = "";
-      for (let i = 0; i <= 11; i++) {
-        const b = document.createElement("button");
-        b.textContent = i;
-        b.onclick = async () => {
-          if (selectedIndex !== null) {
-            await makeGuess(selectedIndex, i);
-          } else {
-            alert("先に相手のカードを選べ");
-          }
-        };
-        numDiv.appendChild(b);
-      }
-    }
+// ================== ターン開始時：自動ドロー ==================
+onValue(ref(db, `rooms/${roomId}/turn`), async snap => {
+  const turn = snap.val();
+  if(turn===playerId && state.deck.length>0){
+    const card = state.deck.pop();
+    state.players[playerId].cards.push(card);
+    sortCards(state.players[playerId].cards);
+    await update(ref(db,`rooms/${roomId}`),state);
+  }
+});
 
-    function render(room) {
-      const opp = myColor==="white"?"black":"white";
-      const oppDiv=document.getElementById("opponentCards");
-      const myDiv=document.getElementById("myCards");
-      const turnNotice=document.getElementById("turnNotice");
-      const lastResultDiv=document.getElementById("lastResult");
-
-      const players = room.players || { white: {cards:[]}, black:{cards:[]} };
-      const logs = Array.isArray(room.logs) ? room.logs : [];
-
-      oppDiv.innerHTML="";
-      myDiv.innerHTML="";
-
-      // 相手カード
-      (players[opp].cards || []).forEach((c,i)=>{
-        const div=document.createElement("div");
-        div.className="card "+(c.color==="white"?"white-card":"black-card");
-        if(!c.open) div.classList.add("closed");
-        div.textContent=c.open?c.num:"?";
-        div.onclick=()=>{
-          if(room.pendingOpen) return;
-          if(room.turn!==myColor) return;
-          document.querySelectorAll(".card").forEach(el=>el.classList.remove("selected"));
-          div.classList.add("selected");
-          selectedIndex=i;
-        };
-        if(selectedIndex===i) div.classList.add("selected");
-        oppDiv.appendChild(div);
-      });
-
-      // 自分カード
-      (players[myColor].cards || []).forEach((c,idx)=>{
-        const div=document.createElement("div");
-        div.className="card "+(c.color==="white"?"white-card":"black-card");
-        div.textContent=c.num;
-        div.classList.add(c.open ? "self-open" : "self-closed");
-
-        if (room.pendingOpen && room.pendingOpen.player === myColor && !c.open) {
-          div.onclick = () => openMyCard(idx);
-          div.style.cursor = "pointer";
-        } else {
-          div.onclick = null;
-          div.style.cursor = "default";
-        }
-
-        myDiv.appendChild(div);
-      });
-
-      // ターン表示
-      if (room.winner) {
-        turnNotice.innerText = (room.winner===myColor?"勝利！":"敗北…");
-      } else if (room.pendingOpen && room.pendingOpen.player === myColor) {
-        turnNotice.innerText = "オープンにするカードを選んでください";
-      } else if (room.turn===myColor) {
-        turnNotice.innerText = "あなたの番です";
-      } else {
-        turnNotice.innerText = "相手の番です";
-      }
-
-      // 成功/失敗表示
-      lastResultDiv.innerText = room.lastResult || "";
-      lastResultDiv.className = "";
-      lastResultDiv.id = "lastResult";
-      if (room.lastResultType === "success") lastResultDiv.classList.add("success");
-      if (room.lastResultType === "failure") lastResultDiv.classList.add("failure");
-
-      // ログ
-      const logDiv=document.getElementById("log");
-      logDiv.innerHTML="";
-      logs.slice().reverse().forEach(l=>{
-        const p=document.createElement("div");
-        p.textContent=`${l.by}→${l.target}[${l.index}] ${l.guess} → ${l.result}`;
-        logDiv.appendChild(p);
-      });
-    }
-
-    function watchRoom(){
-      onValue(ref(db,"rooms/"+roomCode),(snap)=>{
-        if(snap.exists()) render(snap.val());
-      });
-    }
-  </script>
+// ================== 起動 ==================
+initGame();
+</script>
 </body>
 </html>
