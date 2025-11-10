@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.3</title>
+  <title>ALGO ONLINE Ver1.4</title>
   <style>
     body {
       font-family: sans-serif;
@@ -55,7 +55,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.3</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.4</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -102,13 +102,13 @@
     let roomCode = null;
     let selectedIndex = null;
 
+    // =====================================================
+    // ルーム作成
+    // =====================================================
     const createBtn = document.getElementById("createBtn");
     const joinBtn = document.getElementById("joinBtn");
     const enterRoom = document.getElementById("enterRoom");
 
-    // =====================================================
-    // ゲーム開始・ルーム生成
-    // =====================================================
     createBtn.onclick = async () => {
       roomCode = Math.floor(Math.random() * 9000) + 1000;
       const cards = generateCards();
@@ -140,7 +140,7 @@
     };
 
     // =====================================================
-    // カード生成（24枚：白黒×12）
+    // カード生成（24枚）
     // =====================================================
     function generateCards() {
       const all = [];
@@ -155,38 +155,48 @@
     }
 
     // =====================================================
-    // 推測（カード＋数字クリック）
+    // 推測（アタック）
     // =====================================================
     async function makeGuess(targetIndex, guessNum) {
-      const snap = await get(ref(db, "rooms/" + roomCode));
-      const room = snap.val();
-      if (room.winner) return;
-      if (room.turn !== myColor) return alert("相手のターンだ");
+      try {
+        const snap = await get(ref(db, "rooms/" + roomCode));
+        const room = snap.val();
+        if (!room || room.winner) return;
 
-      const opp = myColor === "white" ? "black" : "white";
-      const target = room.players[opp].cards[targetIndex];
-      if (target.open) return alert("そのカードはすでにオープン済み");
+        if (room.turn !== myColor) {
+          alert("相手のターンだ");
+          return;
+        }
 
-      let result = "";
-      if (target.num === guessNum) {
-        result = "correct";
-        room.players[opp].cards[targetIndex].open = true;
-      } else {
-        result = "wrong";
-        const self = room.players[myColor].cards;
-        const unopened = self.find(c => !c.open);
-        if (unopened) unopened.open = true;
+        const opp = myColor === "white" ? "black" : "white";
+        const target = room.players[opp].cards[targetIndex];
+        if (target.open) return alert("そのカードはすでにオープン済み");
+
+        let result = "";
+        let nextTurn = opp; // デフォルトでターン交代
+        if (target.num === guessNum) {
+          result = "correct";
+          room.players[opp].cards[targetIndex].open = true;
+          nextTurn = myColor; // 正解時は連続アタック可
+        } else {
+          result = "wrong";
+          const self = room.players[myColor].cards;
+          const unopened = self.find(c => !c.open);
+          if (unopened) unopened.open = true;
+        }
+
+        const winner = checkWinner(room);
+        await update(ref(db, "rooms/" + roomCode), {
+          players: room.players,
+          turn: winner ? room.turn : nextTurn,
+          logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
+          winner
+        });
+
+        selectedIndex = null;
+      } catch (err) {
+        console.error(err);
       }
-
-      const winner = checkWinner(room);
-      await update(ref(db, "rooms/" + roomCode), {
-        players: room.players,
-        turn: myColor === "white" ? "black" : "white",
-        logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
-        winner
-      });
-
-      selectedIndex = null;
     }
 
     function checkWinner(room) {
@@ -198,7 +208,7 @@
     }
 
     // =====================================================
-    // 初期UIセットアップ
+    // UI初期化
     // =====================================================
     function startGame() {
       document.getElementById("menu").style.display = "none";
@@ -214,9 +224,10 @@
       for (let i = 0; i <= 11; i++) {
         const b = document.createElement("button");
         b.textContent = i;
-        b.onclick = () => {
-          if (selectedIndex !== null) makeGuess(selectedIndex, i);
-          else alert("相手のカードを選べ");
+        b.onclick = async () => {
+          if (selectedIndex !== null) {
+            await makeGuess(selectedIndex, i);
+          } else alert("相手のカードを選べ");
         };
         numDiv.appendChild(b);
       }
@@ -246,7 +257,6 @@
           div.classList.add("selected");
           selectedIndex=i;
         };
-        // 前回の選択を維持
         if(selectedIndex===i) div.classList.add("selected");
         oppDiv.appendChild(div);
       });
