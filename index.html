@@ -2,77 +2,78 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.1</title>
+<title>ALGO ONLINE Ver3.2</title>
 <style>
-  body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
-  h1{background:#333;margin:0;padding:12px;font-size:24px;}
-  .screen{display:none;}
-  .active{display:block;}
-  .board{display:flex;justify-content:center;gap:8px;margin:10px;}
-  .card{width:50px;height:70px;border-radius:6px;display:flex;justify-content:center;align-items:center;
-        font-weight:bold;cursor:pointer;border:1px solid #888;}
-  .white{background:#fff;color:#000;}
-  .black{background:#000;color:#fff;}
-  .hidden{background:#555;color:transparent;border:1px solid #aaa;}
-  button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;cursor:pointer;}
-  #numberButtons button{background:#444;color:#fff;}
-  #stayBtn{background:#777;color:#fff;}
-  #resetBtn{background:#a33;color:#fff;}
-  #numberButtons button:hover,#stayBtn:hover,#resetBtn:hover{background:#999;}
-  #status{font-size:18px;margin:10px;}
-  input{padding:8px;font-size:16px;}
-  #roomCodeDisplay{font-size:36px;color:#0f0;font-weight:bold;margin:10px;}
+body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
+h1{background:#333;margin:0;padding:12px;font-size:24px;}
+.screen{display:none;}
+.active{display:block;}
+.board{display:flex;justify-content:center;gap:8px;margin:10px;}
+.card{width:50px;height:70px;border-radius:6px;display:flex;justify-content:center;align-items:center;
+font-weight:bold;cursor:pointer;border:1px solid #888;}
+.white{background:#fff;color:#000;}
+.black{background:#000;color:#fff;}
+.hidden{background:#555;color:transparent;border:1px solid #aaa;}
+button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;cursor:pointer;}
+#numberButtons button{background:#444;color:#fff;}
+#stayBtn{background:#777;color:#fff;}
+#resetBtn{background:#a33;color:#fff;}
+#numberButtons button:hover,#stayBtn:hover,#resetBtn:hover{background:#999;}
+#status{font-size:18px;margin:10px;}
+input{padding:8px;font-size:16px;}
+#roomCodeDisplay{font-size:36px;color:#0f0;font-weight:bold;margin:10px;}
+.turn-active{color:#0f0;font-weight:bold;}
 </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <small>Ver3.1</small></h1>
+<h1>ALGO ONLINE <small>Ver3.2</small></h1>
 
-  <!-- ロビー画面 -->
-  <div id="lobby" class="screen active">
-    <p><button id="createRoom">ゲームコード発行</button></p>
-    <div id="roomCodeDisplay"></div>
-    <p>または<br>コードを入力して入室：</p>
-    <input type="text" id="joinCode" maxlength="4" placeholder="例: 4823">
-    <button id="joinRoom">入室する</button>
-    <p id="lobbyMessage"></p>
-  </div>
+<!-- ロビー -->
+<div id="lobby" class="screen active">
+  <p><button id="createRoom">ゲームコード発行</button></p>
+  <div id="roomCodeDisplay"></div>
+  <p>または<br>コードを入力して入室：</p>
+  <input type="text" id="joinCode" maxlength="4" placeholder="例: 4823">
+  <button id="joinRoom">入室する</button>
+  <p id="lobbyMessage"></p>
+</div>
 
-  <!-- ゲーム画面 -->
-  <div id="game" class="screen">
-    <div id="status"></div>
-    <h2>相手</h2>
-    <div id="opponentBoard" class="board"></div>
-    <h2>自分</h2>
-    <div id="playerBoard" class="board"></div>
-    <div id="numberButtons"></div>
-    <button id="stayBtn">ステイ</button>
-    <button id="resetBtn">初期化</button>
-    <div id="message"></div>
-  </div>
+<!-- ゲーム -->
+<div id="game" class="screen">
+  <div id="status"></div>
+  <h2>相手</h2>
+  <div id="opponentBoard" class="board"></div>
+  <h2>自分</h2>
+  <div id="playerBoard" class="board"></div>
+  <div id="numberButtons"></div>
+  <button id="stayBtn">ステイ</button>
+  <button id="resetBtn">初期化</button>
+  <div id="message"></div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getDatabase, ref, set, get, update, onValue, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-// Firebase設定
 const firebaseConfig = {
-  apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
-  authDomain: "algo-e0da0.firebaseapp.com",
-  databaseURL: "https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "algo-e0da0",
-  storageBucket: "algo-e0da0.firebasestorage.app",
-  messagingSenderId: "87259521629",
-  appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
+  apiKey:"AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
+  authDomain:"algo-e0da0.firebaseapp.com",
+  databaseURL:"https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"algo-e0da0",
+  storageBucket:"algo-e0da0.firebasestorage.app",
+  messagingSenderId:"87259521629",
+  appId:"1:87259521629:web:35953641ebd0c4a8f123b4"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 let roomId=null, playerId=null, opponentId=null, state=null, selectedTarget=null;
+let drawDone=false;
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
 function sortCards(cards){cards.sort((a,b)=>(a.num===b.num?(a.color==="black"?-1:1):a.num-b.num));}
 
-// ロビー操作
+//================ ロビー ================
 document.getElementById("createRoom").onclick=async()=>{
   roomId=Math.floor(1000+Math.random()*9000).toString();
   playerId="white"; opponentId="black";
@@ -106,6 +107,7 @@ async function createNewRoom(id){
   await set(ref(db,`rooms/${id}`),data);
 }
 
+//================ ゲーム開始 ================
 function switchToGame(){
   document.getElementById("lobby").classList.remove("active");
   document.getElementById("game").classList.add("active");
@@ -113,44 +115,108 @@ function switchToGame(){
 }
 
 function startGameListener(){
-  onValue(ref(db,`rooms/${roomId}`),snap=>{
+  onValue(ref(db,`rooms/${roomId}`),async snap=>{
     if(!snap.exists())return;
     state=snap.val();
-    if(state.players.white.connected&&state.players.black.connected)render();
+    if(state.players.white.connected&&state.players.black.connected){
+      // 自分のターンでカードをまだ引いていないときに引く
+      if(state.turn===playerId && !drawDone && state.deck.length>0){
+        drawDone=true;
+        const card=state.deck.pop();
+        state.players[playerId].cards.push(card);
+        sortCards(state.players[playerId].cards);
+        state.message=`${playerId} がカードを引いた`;
+        await update(ref(db,`rooms/${roomId}`),state);
+      }
+      render();
+    }
   });
 }
 
+//================ 描画 ================
 function render(){
   const my=state.players[playerId], op=state.players[opponentId];
-  document.getElementById("status").textContent=
-    state.winner?`${state.winner}の勝ち！`:
-    state.turn===playerId?"あなたの番です":"相手の番です";
-  const pb=document.getElementById("playerBoard"); pb.innerHTML="";
-  my.cards.forEach(c=>{const d=document.createElement("div");
-    d.className=`card ${c.color} ${c.open?"":"hidden"}`; d.textContent=c.open?c.num:"?"; pb.appendChild(d);});
-  const ob=document.getElementById("opponentBoard"); ob.innerHTML="";
-  op.cards.forEach((c,i)=>{const d=document.createElement("div");
-    d.className=`card ${c.open?c.color:"hidden"}`; d.textContent=c.open?c.num:"?";
-    if(state.turn===playerId&&!c.open)d.onclick=()=>{selectedTarget=i;}; ob.appendChild(d);});
+  const status=document.getElementById("status");
+  status.classList.toggle("turn-active",state.turn===playerId);
+  status.textContent=state.winner?`${state.winner}の勝ち！`:
+    state.turn===playerId?"あなたの番です！":"相手の番です";
+
+  const pb=document.getElementById("playerBoard");
+  pb.innerHTML="";
+  my.cards.forEach((c,i)=>{
+    const div=document.createElement("div");
+    div.className=`card ${c.color} ${c.open?"":"hidden"}`;
+    div.textContent=c.open?c.num:"?";
+    if(state.turn===playerId && c.open!==true && state.message==="失敗…カードを選んでください")div.onclick=()=>openMyCard(i);
+    pb.appendChild(div);
+  });
+
+  const ob=document.getElementById("opponentBoard");
+  ob.innerHTML="";
+  op.cards.forEach((c,i)=>{
+    const div=document.createElement("div");
+    div.className=`card ${c.open?c.color:"hidden"}`;
+    div.textContent=c.open?c.num:"?";
+    if(state.turn===playerId&&!c.open&&state.message!=="失敗…カードを選んでください")
+      div.onclick=()=>{selectedTarget=i;};
+    ob.appendChild(div);
+  });
+
   document.getElementById("message").textContent=state.message||"";
-  document.querySelectorAll("#numberButtons button,#stayBtn").forEach(b=>b.disabled=state.turn!==playerId||state.winner);
+  const btns=document.querySelectorAll("#numberButtons button,#stayBtn");
+  btns.forEach(b=>b.disabled=state.turn!==playerId||state.winner||state.message==="失敗…カードを選んでください");
 }
 
-for(let n=0;n<=11;n++){const b=document.createElement("button");b.textContent=n;b.onclick=()=>attack(n);document.getElementById("numberButtons").appendChild(b);}
+//================ ボタン群 ================
+for(let n=0;n<=11;n++){
+  const b=document.createElement("button");
+  b.textContent=n;
+  b.onclick=()=>attack(n);
+  document.getElementById("numberButtons").appendChild(b);
+}
 document.getElementById("stayBtn").onclick=()=>stayTurn();
 document.getElementById("resetBtn").onclick=()=>resetRoom();
 
+//================ 攻撃・ステイ・リセット ================
 async function attack(num){
   if(selectedTarget==null)return;
-  const op=state.players[opponentId], my=state.players[playerId];
-  const t=op.cards[selectedTarget]; let msg="";
-  if(t.num===num){t.open=true; msg=`正解！${num}`; if(op.cards.every(c=>c.open))state.winner=playerId;}
-  else{msg=`失敗…${num}ではなかった`; const u=my.cards.find(c=>!c.open); if(u)u.open=true; else state.winner=opponentId; state.turn=opponentId;}
-  state.message=msg; selectedTarget=null; await update(ref(db,`rooms/${roomId}`),state);
+  const op=state.players[opponentId];
+  const my=state.players[playerId];
+  const t=op.cards[selectedTarget];
+  let msg="";
+  if(t.num===num){
+    t.open=true;
+    msg=`正解！${num}`;
+    if(op.cards.every(c=>c.open))state.winner=playerId;
+  }else{
+    msg="失敗…カードを選んでください";
+  }
+  state.message=msg;
+  selectedTarget=null;
+  await update(ref(db,`rooms/${roomId}`),state);
 }
 
-async function stayTurn(){state.turn=opponentId;state.message="ステイしました";await update(ref(db,`rooms/${roomId}`),state);}
-async function resetRoom(){if(!roomId)return;await remove(ref(db,`rooms/${roomId}`));location.reload();}
+async function openMyCard(index){
+  const my=state.players[playerId];
+  my.cards[index].open=true;
+  state.turn=opponentId;
+  state.message="ターン交代";
+  drawDone=false;
+  await update(ref(db,`rooms/${roomId}`),state);
+}
+
+async function stayTurn(){
+  state.turn=opponentId;
+  state.message="ステイしました";
+  drawDone=false;
+  await update(ref(db,`rooms/${roomId}`),state);
+}
+
+async function resetRoom(){
+  if(!roomId)return;
+  await remove(ref(db,`rooms/${roomId}`));
+  location.reload();
+}
 </script>
 </body>
 </html>
