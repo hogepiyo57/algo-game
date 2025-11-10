@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.9</title>
+  <title>ALGO ONLINE Ver1.10</title>
   <style>
     body { font-family: sans-serif; text-align: center; background: #222; color: #fff; }
     h1 { font-size: 36px; margin-bottom: 5px; }
@@ -32,7 +32,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.9</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.10</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -132,31 +132,25 @@
       return all;
     }
 
-    // 宣言（成功→即オープン、失敗→自分が選んでオープン）
+    // 宣言
     async function makeGuess(targetIndex, guessNum) {
       alert(`宣言：相手の${targetIndex}番を「${guessNum}」とした`);
       try {
         const snap = await get(ref(db, "rooms/" + roomCode));
         const room = snap.val();
         if (!room) { alert("部屋が見つからない"); return; }
+
+        const logs = Array.isArray(room.logs) ? room.logs : [];
+        const players = room.players || { white: {cards:[]}, black:{cards:[]} };
+
         if (room.winner) { alert("すでに勝敗がついてる"); return; }
-
-        if (room.pendingOpen) {
-          alert("先にオープンするカードを選んでください");
-          return;
-        }
-
-        if (room.turn !== myColor) {
-          alert("相手の番だ");
-          return;
-        }
+        if (room.pendingOpen) { alert("先にオープンするカードを選んでください"); return; }
+        if (room.turn !== myColor) { alert("相手の番だ"); return; }
 
         const opp = myColor === "white" ? "black" : "white";
-        const targetCard = room.players[opp].cards[targetIndex];
-        if (targetCard.open) {
-          alert("そのカードは開いている");
-          return;
-        }
+        const targetCard = players[opp].cards[targetIndex];
+        if (!targetCard) { alert("そのカードは存在しない"); return; }
+        if (targetCard.open) { alert("そのカードは開いている"); return; }
 
         let resultText = "";
         let resultType = "";
@@ -164,31 +158,28 @@
         let pendingOpen = null;
 
         if (targetCard.num === guessNum) {
-          // 成功
-          room.players[opp].cards[targetIndex].open = true;
+          players[opp].cards[targetIndex].open = true;
           resultText = `成功：相手の${targetIndex}番は「${guessNum}」だった。`;
           resultType = "success";
-          nextTurn = myColor; // 連続アタック
+          nextTurn = myColor; // 連続
         } else {
-          // 失敗 → 自分が選ぶ
           resultText = `失敗：自分の伏せカードを1枚オープンしてください。`;
           resultType = "failure";
           pendingOpen = { player: myColor, nextTurn: opp };
-          // ターンはいったんそのままにしておく（選び終わったらnextTurnへ）
         }
 
-        const winner = checkWinner(room);
+        const winner = checkWinner({ ...room, players });
 
         await update(ref(db, "rooms/" + roomCode), {
-          players: room.players,
+          players,
           turn: winner ? room.turn : nextTurn,
           logs: [
-            ...room.logs,
+            ...logs,
             { by: myColor, target: opp, index: targetIndex, guess: guessNum, result: resultType }
           ],
           lastResult: resultText,
           lastResultType: resultType,
-          pendingOpen: pendingOpen,
+          pendingOpen,
           winner
         });
 
@@ -199,33 +190,37 @@
       }
     }
 
-    // 失敗後に自分のカードを開ける
+    // 自分のカードを開く
     async function openMyCard(cardIndex) {
       try {
         const snap = await get(ref(db, "rooms/" + roomCode));
         const room = snap.val();
         if (!room || !room.pendingOpen) return;
         if (room.pendingOpen.player !== myColor) return;
-        if (room.players[myColor].cards[cardIndex].open) return;
 
-        room.players[myColor].cards[cardIndex].open = true;
+        const players = room.players;
+        if (players[myColor].cards[cardIndex].open) return;
+
+        players[myColor].cards[cardIndex].open = true;
         const nextTurn = room.pendingOpen.nextTurn;
 
         await update(ref(db, "rooms/" + roomCode), {
-          players: room.players,
+          players,
           turn: nextTurn,
           pendingOpen: null,
           lastResult: `失敗：自分の${cardIndex}番を公開。`,
           lastResultType: "failure"
         });
       } catch (e) {
-        alert("自分のカードを開けるときのエラー：" + e.message);
+        alert("自分のカードを開くときのエラー：" + e.message);
       }
     }
 
     function checkWinner(room) {
+      if (!room.players) return null;
       for (const color of ["white","black"]) {
-        const allOpen = room.players[color].cards.every(c=>c.open);
+        const cards = room.players[color].cards || [];
+        const allOpen = cards.length > 0 && cards.every(c=>c.open);
         if (allOpen) return color==="white"?"black":"white";
       }
       return null;
@@ -239,7 +234,6 @@
       setupNumberButtons();
     }
 
-    // 数字ボタン
     function setupNumberButtons() {
       const numDiv = document.getElementById("numberSelect");
       numDiv.innerHTML = "";
@@ -257,7 +251,6 @@
       }
     }
 
-    // 描画
     function render(room) {
       const opp = myColor==="white"?"black":"white";
       const oppDiv=document.getElementById("opponentCards");
@@ -265,17 +258,20 @@
       const turnNotice=document.getElementById("turnNotice");
       const lastResultDiv=document.getElementById("lastResult");
 
+      const players = room.players || { white: {cards:[]}, black:{cards:[]} };
+      const logs = Array.isArray(room.logs) ? room.logs : [];
+
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
       // 相手カード
-      room.players[opp].cards.forEach((c,i)=>{
+      (players[opp].cards || []).forEach((c,i)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
         if(!c.open) div.classList.add("closed");
         div.textContent=c.open?c.num:"?";
         div.onclick=()=>{
-          if(room.pendingOpen) return;      // オープン待ちは宣言できない
+          if(room.pendingOpen) return;
           if(room.turn!==myColor) return;
           document.querySelectorAll(".card").forEach(el=>el.classList.remove("selected"));
           div.classList.add("selected");
@@ -286,7 +282,7 @@
       });
 
       // 自分カード
-      room.players[myColor].cards.forEach((c,idx)=>{
+      (players[myColor].cards || []).forEach((c,idx)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
         div.textContent=c.num;
@@ -324,14 +320,13 @@
       // ログ
       const logDiv=document.getElementById("log");
       logDiv.innerHTML="";
-      room.logs.slice().reverse().forEach(l=>{
+      logs.slice().reverse().forEach(l=>{
         const p=document.createElement("div");
         p.textContent=`${l.by}→${l.target}[${l.index}] ${l.guess} → ${l.result}`;
         logDiv.appendChild(p);
       });
     }
 
-    // 監視
     function watchRoom(){
       onValue(ref(db,"rooms/"+roomCode),(snap)=>{
         if(snap.exists()) render(snap.val());
