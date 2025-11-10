@@ -2,13 +2,22 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE</title>
+  <title>ALGO ONLINE Ver1.1</title>
   <style>
     body {
       font-family: sans-serif;
       text-align: center;
       background: #222;
       color: #fff;
+    }
+    h1 {
+      font-size: 36px;
+      margin-bottom: 5px;
+    }
+    .version {
+      font-size: 14px;
+      color: #aaa;
+      margin-left: 8px;
     }
     #game, #joinArea { display: none; }
     .card-row {
@@ -18,36 +27,30 @@
       margin: 10px 0;
     }
     .card {
-      width: 50px;
-      height: 70px;
-      border-radius: 6px;
+      width: 60px;
+      height: 80px;
+      border-radius: 8px;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-size: 20px;
+      font-size: 22px;
       font-weight: bold;
-      cursor: default;
+      cursor: pointer;
+      transition: transform 0.2s;
     }
-    .closed {
-      background: gray;
-      color: transparent;
-    }
-    .white-card {
-      background: #fff;
-      color: #000;
-    }
-    .black-card {
-      background: #000;
-      color: #fff;
-      border: 2px solid #fff;
-    }
-    button { padding: 5px 10px; margin: 5px; }
-    select, input { padding: 5px; }
+    .card:hover { transform: scale(1.1); }
+    .closed { background: gray; color: transparent; }
+    .white-card { background: #fff; color: #000; border: 2px solid #000; }
+    .black-card { background: #000; color: #fff; border: 2px solid #fff; }
+    .selected { outline: 4px solid yellow; }
+    button { padding: 6px 12px; margin: 8px; cursor: pointer; }
+    #numberSelect { display: flex; justify-content: center; gap: 5px; margin: 10px 0; flex-wrap: wrap; }
+    #numberSelect button { width: 40px; height: 40px; font-size: 18px; }
     #log { margin-top: 20px; max-height: 200px; overflow-y: auto; text-align: left; }
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE</h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.1</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -68,21 +71,7 @@
     <h3>自分のカード</h3>
     <div id="myCards" class="card-row"></div>
 
-    <div id="actionArea">
-      <p>推測するカードと数字を選べ</p>
-      <select id="targetIndex">
-        <option value="0">0</option>
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-      </select>
-      <select id="guessNum">
-        <option value="">数字</option>
-        ${Array.from({length:11}, (_,i)=>`<option value="${i+1}">${i+1}</option>`).join("")}
-      </select>
-      <button id="guessBtn">アタック</button>
-    </div>
-
+    <div id="numberSelect"></div>
     <div id="log"></div>
   </div>
 
@@ -103,19 +92,13 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // =====================================================
-    // 状態変数
-    // =====================================================
     let myColor = null;
     let roomCode = null;
+    let selectedIndex = null;
 
-    // =====================================================
-    // UIイベント
-    // =====================================================
     const createBtn = document.getElementById("createBtn");
     const joinBtn = document.getElementById("joinBtn");
     const enterRoom = document.getElementById("enterRoom");
-    const guessBtn = document.getElementById("guessBtn");
 
     createBtn.onclick = async () => {
       roomCode = Math.floor(Math.random() * 9000) + 1000;
@@ -146,13 +129,6 @@
       watchRoom();
     };
 
-    guessBtn.onclick = async () => {
-      const idx = parseInt(document.getElementById("targetIndex").value);
-      const num = parseInt(document.getElementById("guessNum").value);
-      if (!num) return alert("数字を選べ");
-      await makeGuess(idx, num);
-    };
-
     // =====================================================
     // カード生成
     // =====================================================
@@ -175,7 +151,7 @@
     function compareCards(a,b){ if(a.num!==b.num)return a.num-b.num; return a.color==="black"?-1:1;}
 
     // =====================================================
-    // 推測処理
+    // 推測（カード＋数字クリック）
     // =====================================================
     async function makeGuess(targetIndex, guessNum) {
       const snap = await get(ref(db, "rooms/" + roomCode));
@@ -213,11 +189,9 @@
         logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
         winner
       });
+      selectedIndex = null;
     }
 
-    // =====================================================
-    // 勝敗チェック
-    // =====================================================
     function checkWinner(room) {
       for (const color of ["white","black"]) {
         const allOpen = room.players[color].cards.every(c=>c.open);
@@ -226,14 +200,26 @@
       return null;
     }
 
-    // =====================================================
-    // ゲーム開始・描画・監視
-    // =====================================================
     function startGame() {
       document.getElementById("menu").style.display = "none";
       document.getElementById("joinArea").style.display = "none";
       document.getElementById("game").style.display = "block";
       document.getElementById("status").innerText = `ルームコード: ${roomCode}`;
+      setupNumberButtons();
+    }
+
+    function setupNumberButtons() {
+      const numDiv = document.getElementById("numberSelect");
+      numDiv.innerHTML = "";
+      for (let i = 1; i <= 11; i++) {
+        const b = document.createElement("button");
+        b.textContent = i;
+        b.onclick = () => {
+          if (selectedIndex !== null) makeGuess(selectedIndex, i);
+          else alert("相手のカードを選べ");
+        };
+        numDiv.appendChild(b);
+      }
     }
 
     function render(room) {
@@ -243,10 +229,16 @@
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
-      room.players[opp].cards.forEach(c=>{
+      room.players[opp].cards.forEach((c,i)=>{
         const div=document.createElement("div");
         div.className="card "+(c.open?"white-card":"closed");
         div.textContent=c.open?c.num:"?";
+        div.onclick=()=>{
+          if(room.turn!==myColor)return;
+          document.querySelectorAll(".card").forEach(el=>el.classList.remove("selected"));
+          div.classList.add("selected");
+          selectedIndex=i;
+        };
         oppDiv.appendChild(div);
       });
 
@@ -254,7 +246,7 @@
         const div=document.createElement("div");
         div.className="card "+(myColor==="white"?"white-card":"black-card");
         if(!c.open)div.classList.add("closed");
-        div.textContent=c.open?c.num:"?";
+        div.textContent=c.num; // 自分は常に数字が見える
         myDiv.appendChild(div);
       });
 
@@ -267,7 +259,7 @@
       logDiv.innerHTML="";
       room.logs.slice().reverse().forEach(l=>{
         const p=document.createElement("div");
-        p.textContent=`${l.by}→${l.target}[${l.index}]=${l.guess} → ${l.result}`;
+        p.textContent=`${l.by}→${l.target}[${l.index}] 宣言${l.guess} → ${l.result}`;
         logDiv.appendChild(p);
       });
     }
@@ -280,4 +272,3 @@
   </script>
 </body>
 </html>
-
