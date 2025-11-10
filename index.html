@@ -2,14 +2,282 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>アルゴオンライン</title>
-  <script type="module" src="main.js"></script>
+  <title>ALGO ONLINE</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #222;
+      color: #fff;
+    }
+    #game, #joinArea { display: none; }
+    .card-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .card {
+      width: 50px;
+      height: 70px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: default;
+    }
+    .closed {
+      background: gray;
+      color: transparent;
+    }
+    .white-card {
+      background: #fff;
+      color: #000;
+    }
+    .black-card {
+      background: #000;
+      color: #fff;
+      border: 2px solid #fff;
+    }
+    button { padding: 5px 10px; margin: 5px; }
+    select, input { padding: 5px; }
+    #log { margin-top: 20px; max-height: 200px; overflow-y: auto; text-align: left; }
+  </style>
 </head>
 <body>
-  <h1>アルゴオンライン</h1>
-  <button id="create">ゲームコード発行</button>
-  <input id="codeInput" placeholder="4桁コード">
-  <button id="join">入室する</button>
-  <div id="status"></div>
+  <h1>ALGO ONLINE</h1>
+
+  <div id="menu">
+    <button id="createBtn">ゲームコード発行</button>
+    <button id="joinBtn">入室する</button>
+  </div>
+
+  <div id="joinArea">
+    <input type="number" id="roomCodeInput" placeholder="4桁のコード">
+    <button id="enterRoom">入室</button>
+  </div>
+
+  <div id="game">
+    <h2 id="status"></h2>
+
+    <h3>相手のカード</h3>
+    <div id="opponentCards" class="card-row"></div>
+
+    <h3>自分のカード</h3>
+    <div id="myCards" class="card-row"></div>
+
+    <div id="actionArea">
+      <p>推測するカードと数字を選べ</p>
+      <select id="targetIndex">
+        <option value="0">0</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+      <select id="guessNum">
+        <option value="">数字</option>
+        ${Array.from({length:11}, (_,i)=>`<option value="${i+1}">${i+1}</option>`).join("")}
+      </select>
+      <button id="guessBtn">アタック</button>
+    </div>
+
+    <div id="log"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set, update, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
+      authDomain: "algo-e0da0.firebaseapp.com",
+      databaseURL: "https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "algo-e0da0",
+      storageBucket: "algo-e0da0.firebasestorage.app",
+      messagingSenderId: "87259521629",
+      appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // =====================================================
+    // 状態変数
+    // =====================================================
+    let myColor = null;
+    let roomCode = null;
+
+    // =====================================================
+    // UIイベント
+    // =====================================================
+    const createBtn = document.getElementById("createBtn");
+    const joinBtn = document.getElementById("joinBtn");
+    const enterRoom = document.getElementById("enterRoom");
+    const guessBtn = document.getElementById("guessBtn");
+
+    createBtn.onclick = async () => {
+      roomCode = Math.floor(Math.random() * 9000) + 1000;
+      const cards = generateCards();
+      await set(ref(db, "rooms/" + roomCode), {
+        players: { white: { cards: cards.white }, black: { cards: cards.black } },
+        turn: "white",
+        logs: [],
+        winner: null
+      });
+      myColor = "white";
+      alert("ルームコード: " + roomCode);
+      startGame();
+      watchRoom();
+    };
+
+    joinBtn.onclick = () => {
+      document.getElementById("joinArea").style.display = "block";
+    };
+
+    enterRoom.onclick = async () => {
+      roomCode = document.getElementById("roomCodeInput").value;
+      if (!roomCode) return alert("コードを入力せよ");
+      const snap = await get(ref(db, "rooms/" + roomCode));
+      if (!snap.exists()) return alert("ルームが存在しない");
+      myColor = "black";
+      startGame();
+      watchRoom();
+    };
+
+    guessBtn.onclick = async () => {
+      const idx = parseInt(document.getElementById("targetIndex").value);
+      const num = parseInt(document.getElementById("guessNum").value);
+      if (!num) return alert("数字を選べ");
+      await makeGuess(idx, num);
+    };
+
+    // =====================================================
+    // カード生成
+    // =====================================================
+    function generateCards() {
+      const all = [];
+      for (let color of ["white", "black"]) {
+        for (let i = 1; i <= 11; i++) all.push({ color, num: i });
+      }
+      for (let i = all.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [all[i], all[j]] = [all[j], all[i]];
+      }
+      const whiteCards = all.slice(0, 4).sort(compareCards);
+      const blackCards = all.slice(4, 8).sort(compareCards);
+      return {
+        white: whiteCards.map(c => ({ num: c.num, open: false })),
+        black: blackCards.map(c => ({ num: c.num, open: false }))
+      };
+    }
+    function compareCards(a,b){ if(a.num!==b.num)return a.num-b.num; return a.color==="black"?-1:1;}
+
+    // =====================================================
+    // 推測処理
+    // =====================================================
+    async function makeGuess(targetIndex, guessNum) {
+      const snap = await get(ref(db, "rooms/" + roomCode));
+      const room = snap.val();
+      if (room.winner) return;
+
+      if (room.turn !== myColor) {
+        alert("相手のターンだ");
+        return;
+      }
+
+      const opp = myColor === "white" ? "black" : "white";
+      const target = room.players[opp].cards[targetIndex];
+      if (target.open) {
+        alert("そのカードはすでにオープン済み");
+        return;
+      }
+
+      let result = "";
+      if (target.num === guessNum) {
+        result = "correct";
+        room.players[opp].cards[targetIndex].open = true;
+      } else {
+        result = "wrong";
+        const self = room.players[myColor].cards;
+        const unopened = self.find(c => !c.open);
+        if (unopened) unopened.open = true;
+      }
+
+      const winner = checkWinner(room);
+
+      await update(ref(db, "rooms/" + roomCode), {
+        players: room.players,
+        turn: myColor === "white" ? "black" : "white",
+        logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
+        winner
+      });
+    }
+
+    // =====================================================
+    // 勝敗チェック
+    // =====================================================
+    function checkWinner(room) {
+      for (const color of ["white","black"]) {
+        const allOpen = room.players[color].cards.every(c=>c.open);
+        if (allOpen) return color==="white"?"black":"white";
+      }
+      return null;
+    }
+
+    // =====================================================
+    // ゲーム開始・描画・監視
+    // =====================================================
+    function startGame() {
+      document.getElementById("menu").style.display = "none";
+      document.getElementById("joinArea").style.display = "none";
+      document.getElementById("game").style.display = "block";
+      document.getElementById("status").innerText = `ルームコード: ${roomCode}`;
+    }
+
+    function render(room) {
+      const opp = myColor==="white"?"black":"white";
+      const oppDiv=document.getElementById("opponentCards");
+      const myDiv=document.getElementById("myCards");
+      oppDiv.innerHTML="";
+      myDiv.innerHTML="";
+
+      room.players[opp].cards.forEach(c=>{
+        const div=document.createElement("div");
+        div.className="card "+(c.open?"white-card":"closed");
+        div.textContent=c.open?c.num:"?";
+        oppDiv.appendChild(div);
+      });
+
+      room.players[myColor].cards.forEach(c=>{
+        const div=document.createElement("div");
+        div.className="card "+(myColor==="white"?"white-card":"black-card");
+        if(!c.open)div.classList.add("closed");
+        div.textContent=c.open?c.num:"?";
+        myDiv.appendChild(div);
+      });
+
+      document.getElementById("status").innerText = 
+        room.winner
+        ? (room.winner===myColor?"勝利！":"敗北…")
+        : (room.turn===myColor?"あなたのターン":"相手のターン");
+
+      const logDiv=document.getElementById("log");
+      logDiv.innerHTML="";
+      room.logs.slice().reverse().forEach(l=>{
+        const p=document.createElement("div");
+        p.textContent=`${l.by}→${l.target}[${l.index}]=${l.guess} → ${l.result}`;
+        logDiv.appendChild(p);
+      });
+    }
+
+    function watchRoom(){
+      onValue(ref(db,"rooms/"+roomCode),(snap)=>{
+        if(snap.exists()) render(snap.val());
+      });
+    }
+  </script>
 </body>
 </html>
+
