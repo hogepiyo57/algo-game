@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.1</title>
+  <title>ALGO ONLINE Ver1.2</title>
   <style>
     body {
       font-family: sans-serif;
@@ -50,7 +50,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.1</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.2</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -100,11 +100,15 @@
     const joinBtn = document.getElementById("joinBtn");
     const enterRoom = document.getElementById("enterRoom");
 
+    // =====================================================
+    // ゲーム開始・ルーム生成
+    // =====================================================
     createBtn.onclick = async () => {
       roomCode = Math.floor(Math.random() * 9000) + 1000;
       const cards = generateCards();
       await set(ref(db, "rooms/" + roomCode), {
-        players: { white: { cards: cards.white }, black: { cards: cards.black } },
+        players: { white: { cards: cards.slice(0,4) }, black: { cards: cards.slice(4,8) } },
+        deck: cards.slice(8), // 残り16枚（山）
         turn: "white",
         logs: [],
         winner: null
@@ -130,25 +134,22 @@
     };
 
     // =====================================================
-    // カード生成
+    // カード生成（24枚：白黒×12）
     // =====================================================
     function generateCards() {
       const all = [];
       for (let color of ["white", "black"]) {
-        for (let i = 1; i <= 11; i++) all.push({ color, num: i });
+        for (let i = 0; i <= 11; i++) all.push({ color, num: i, open: false });
       }
+      // シャッフル
       for (let i = all.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [all[i], all[j]] = [all[j], all[i]];
       }
-      const whiteCards = all.slice(0, 4).sort(compareCards);
-      const blackCards = all.slice(4, 8).sort(compareCards);
-      return {
-        white: whiteCards.map(c => ({ num: c.num, open: false })),
-        black: blackCards.map(c => ({ num: c.num, open: false }))
-      };
+      // 並び順統一（数字優先、同値なら白優先）
+      all.sort((a,b)=>a.num!==b.num?a.num-b.num:(a.color==="white"?-1:1));
+      return all;
     }
-    function compareCards(a,b){ if(a.num!==b.num)return a.num-b.num; return a.color==="black"?-1:1;}
 
     // =====================================================
     // 推測（カード＋数字クリック）
@@ -190,6 +191,7 @@
         winner
       });
       selectedIndex = null;
+      render(room);
     }
 
     function checkWinner(room) {
@@ -208,10 +210,13 @@
       setupNumberButtons();
     }
 
+    // =====================================================
+    // 数字選択ボタンセットアップ
+    // =====================================================
     function setupNumberButtons() {
       const numDiv = document.getElementById("numberSelect");
       numDiv.innerHTML = "";
-      for (let i = 1; i <= 11; i++) {
+      for (let i = 0; i <= 11; i++) {
         const b = document.createElement("button");
         b.textContent = i;
         b.onclick = () => {
@@ -222,6 +227,9 @@
       }
     }
 
+    // =====================================================
+    // 描画
+    // =====================================================
     function render(room) {
       const opp = myColor==="white"?"black":"white";
       const oppDiv=document.getElementById("opponentCards");
@@ -229,9 +237,11 @@
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
+      // 相手カード
       room.players[opp].cards.forEach((c,i)=>{
         const div=document.createElement("div");
-        div.className="card "+(c.open?"white-card":"closed");
+        div.className="card "+(c.color==="white"?"white-card":"black-card");
+        if(!c.open) div.classList.add("closed");
         div.textContent=c.open?c.num:"?";
         div.onclick=()=>{
           if(room.turn!==myColor)return;
@@ -242,11 +252,15 @@
         oppDiv.appendChild(div);
       });
 
+      // 自分カード
       room.players[myColor].cards.forEach(c=>{
         const div=document.createElement("div");
-        div.className="card "+(myColor==="white"?"white-card":"black-card");
-        if(!c.open)div.classList.add("closed");
-        div.textContent=c.num; // 自分は常に数字が見える
+        div.className="card "+(c.color==="white"?"white-card":"black-card");
+        if(c.open) {
+          div.textContent=c.num;
+        } else {
+          div.textContent=c.num; // 自分は常に数字を見える
+        }
         myDiv.appendChild(div);
       });
 
