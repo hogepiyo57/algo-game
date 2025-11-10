@@ -2,18 +2,23 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.3</title>
+<title>ALGO ONLINE Ver3.4</title>
 <style>
 body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
 h1{background:#333;margin:0;padding:12px;font-size:24px;}
 .screen{display:none;}
 .active{display:block;}
 .board{display:flex;justify-content:center;gap:8px;margin:10px;}
-.card{width:50px;height:70px;border-radius:6px;display:flex;justify-content:center;align-items:center;
-font-weight:bold;cursor:pointer;border:1px solid #888;}
+.card{
+  width:50px;height:70px;border-radius:6px;
+  display:flex;justify-content:center;align-items:center;
+  font-weight:bold;cursor:pointer;border:1px solid #888;
+}
 .white{background:#fff;color:#000;}
 .black{background:#000;color:#fff;}
 .hidden{background:#555;color:transparent;border:1px solid #aaa;}
+/* 自分の伏せカード用の見た目：数字は見えるが伏せてる感を出す */
+.self-closed{box-shadow:0 0 0 3px #555 inset;}
 button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;cursor:pointer;}
 #numberButtons button{background:#444;color:#fff;}
 #stayBtn{background:#777;color:#fff;}
@@ -26,7 +31,7 @@ input{padding:8px;font-size:16px;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver3.3</small></h1>
+<h1>ALGO ONLINE <small>Ver3.4</small></h1>
 
 <!-- ロビー -->
 <div id="lobby" class="screen active">
@@ -83,7 +88,6 @@ document.getElementById("createRoom").onclick=async()=>{
   await createNewRoom(roomId);
   document.getElementById("roomCodeDisplay").textContent=roomId;
   document.getElementById("lobbyMessage").textContent=`コード ${roomId} を相手に伝えてください。`;
-  // ホストもすぐゲーム画面へ
   switchToGame();
 };
 
@@ -97,7 +101,7 @@ document.getElementById("joinRoom").onclick=async()=>{
   switchToGame();
 };
 
-// ルーム作成（テスト用にblackもconnected:trueにしておく）
+// ルーム作成（テスト用：blackもconnectedにしておく）
 async function createNewRoom(id){
   const deck=[];
   ["white","black"].forEach(c=>{
@@ -111,7 +115,7 @@ async function createNewRoom(id){
   const data={
     players:{
       white:{cards:whiteCards,connected:true},
-      black:{cards:blackCards,connected:true}  // ★ここをtrueにして1人でも表示できるようにする
+      black:{cards:blackCards,connected:true}
     },
     deck,
     turn:"white",
@@ -121,20 +125,20 @@ async function createNewRoom(id){
   await set(ref(db,`rooms/${id}`),data);
 }
 
-// 画面切り替え
+// 画面切替
 function switchToGame(){
   document.getElementById("lobby").classList.remove("active");
   document.getElementById("game").classList.add("active");
   startGameListener();
 }
 
-// 監視
+// リアルタイム監視
 function startGameListener(){
   onValue(ref(db,`rooms/${roomId}`), async (snap)=>{
     if(!snap.exists()) return;
     state = snap.val();
 
-    // 手番開始時に自動ドロー
+    // 自分のターンになったら自動ドロー（1回だけ）
     if (state.turn === playerId && !drawDone && state.deck && state.deck.length > 0) {
       drawDone = true;
       const card = state.deck.pop();
@@ -150,7 +154,7 @@ function startGameListener(){
 
 // 描画
 function render(){
-  if (!state) return;
+  if(!state) return;
   const my = state.players[playerId];
   const op = state.players[opponentId];
 
@@ -161,14 +165,14 @@ function render(){
     ? `${state.winner}の勝ち！`
     : (state.turn === playerId ? "あなたの番です！" : "相手の番です");
 
-  // 自分
+  // 自分のカード：数字は必ず見える
   const pb = document.getElementById("playerBoard");
   pb.innerHTML = "";
   (my.cards || []).forEach((c,i)=>{
     const div = document.createElement("div");
-    div.className = `card ${c.color} ${c.open ? "" : "hidden"}`;
-    div.textContent = c.open ? c.num : "?";
-    // 失敗時にだけ自分のカードを選択できる
+    div.className = `card ${c.color} ${c.open ? "" : "self-closed"}`;
+    div.textContent = c.num;  // ★自分には常に数字を見せる
+    // 失敗時に自分で開ける
     if (state.turn === playerId && state.message === "失敗…カードを選んでください" && !c.open) {
       div.onclick = () => openMyCard(i);
       div.style.cursor = "pointer";
@@ -176,15 +180,17 @@ function render(){
     pb.appendChild(div);
   });
 
-  // 相手
+  // 相手のカード：閉じてるときは見せない
   const ob = document.getElementById("opponentBoard");
   ob.innerHTML = "";
   (op.cards || []).forEach((c,i)=>{
     const div = document.createElement("div");
     div.className = `card ${c.open ? c.color : "hidden"}`;
     div.textContent = c.open ? c.num : "?";
-    // 自分の番で、失敗でカード選択中でないときだけ相手を指定できる
-    if (state.turn === playerId && state.message !== "失敗…カードを選んでください" && !c.open) {
+    // 自分の番で、失敗していないときだけ宣言対象にできる
+    if (state.turn === playerId &&
+        state.message !== "失敗…カードを選んでください" &&
+        !c.open) {
       div.onclick = () => { selectedTarget = i; };
     }
     ob.appendChild(div);
@@ -198,15 +204,15 @@ function render(){
   document.querySelectorAll("#numberButtons button, #stayBtn").forEach(b => b.disabled = disable);
 }
 
-// 数字ボタン作成
-for (let n=0; n<=11; n++){
-  const b = document.createElement("button");
-  b.textContent = n;
-  b.onclick = () => attack(n);
+// 数字ボタン生成
+for(let n=0;n<=11;n++){
+  const b=document.createElement("button");
+  b.textContent=n;
+  b.onclick=()=>attack(n);
   document.getElementById("numberButtons").appendChild(b);
 }
 
-// アタック
+// アタック処理
 async function attack(num){
   if (selectedTarget == null) return;
   const op = state.players[opponentId];
@@ -217,8 +223,8 @@ async function attack(num){
   if (target.num === num) {
     target.open = true;
     msg = `正解！ ${num}`;
-    // 全部開いたら勝ち
-    if (op.cards.every(c=>c.open)) {
+    // 相手が全部開いたら勝ち
+    if (op.cards.every(c => c.open)) {
       state.winner = playerId;
       msg = "勝利！";
     }
@@ -237,7 +243,7 @@ async function openMyCard(index){
   my.cards[index].open = true;
   state.turn = opponentId;
   state.message = "ターン交代";
-  drawDone = false;
+  drawDone = false;  // 次の自分のターンでまた引ける
   await update(ref(db,`rooms/${roomId}`), state);
 }
 
