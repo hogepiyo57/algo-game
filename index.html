@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver2.0</title>
+<title>ALGO ONLINE Ver2.1</title>
 <style>
   body {
     background: #222;
@@ -43,7 +43,7 @@
   .white { background: #fff; color: #000; }
   .black { background: #000; color: #fff; }
   .hidden { background: #555; color: transparent; border: 1px solid #aaa; }
-  #numberButtons button, #stayBtn {
+  #numberButtons button, #stayBtn, #resetBtn {
     margin: 5px;
     padding: 10px 14px;
     font-size: 16px;
@@ -53,12 +53,14 @@
   }
   #numberButtons button { background: #444; color: #fff; }
   #stayBtn { background: #777; color: #fff; }
-  #numberButtons button:hover, #stayBtn:hover { background: #999; }
+  #resetBtn { background: #a33; color: #fff; }
+  #numberButtons button:hover, #stayBtn:hover, #resetBtn:hover { background: #999; }
   #message { margin-top: 12px; height: 24px; }
 </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <small>Ver2.0</small></h1>
+  <h1>ALGO ONLINE <small>Ver2.1</small></h1>
+  <button id="resetBtn">初期化</button>
   <div id="status"></div>
 
   <h2>相手</h2>
@@ -104,26 +106,39 @@ let state = {
   winner: null
 };
 
-// ================== 初期化 ==================
+// ================== 強制初期化 ==================
+document.getElementById("resetBtn").onclick = async () => {
+  const deck = [];
+  ["white", "black"].forEach(color => {
+    for (let n = 0; n <= 11; n++) deck.push({ num: n, color });
+  });
+  shuffle(deck);
+
+  const whiteCards = deck.splice(0, 4);
+  const blackCards = deck.splice(0, 4);
+  sortCards(whiteCards);
+  sortCards(blackCards);
+
+  state = {
+    deck: deck,
+    players: {
+      white: { cards: whiteCards, open: [] },
+      black: { cards: blackCards, open: [] }
+    },
+    turn: "white",
+    message: "初期配布完了",
+    winner: null
+  };
+
+  await set(ref(db, `rooms/${roomId}`), state);
+  alert("初期化完了。カードを再配布しました。");
+};
+
+// ================== 初期化処理 ==================
 async function initGame() {
   const snapshot = await get(ref(db, `rooms/${roomId}`));
   if (!snapshot.exists()) {
-    // デッキ作成（黒白各0〜11）
-    const deck = [];
-    ["white", "black"].forEach(color => {
-      for (let n = 0; n <= 11; n++) deck.push({ num: n, color });
-    });
-    shuffle(deck);
-
-    const whiteCards = deck.splice(0, 4);
-    const blackCards = deck.splice(0, 4);
-    sortCards(whiteCards);
-    sortCards(blackCards);
-
-    state.deck = deck;
-    state.players.white.cards = whiteCards;
-    state.players.black.cards = blackCards;
-    await set(ref(db, `rooms/${roomId}`), state);
+    document.getElementById("message").textContent = "初期化ボタンで開始してください。";
   } else {
     state = snapshot.val();
   }
@@ -153,9 +168,8 @@ function render() {
   pb.innerHTML = "";
   my.cards.forEach((c,i)=>{
     const div=document.createElement("div");
-    div.className=`card ${c.open?"":""} ${c.color} ${c.open?"":"hidden"}`;
+    div.className=`card ${c.color} ${c.open?"":"hidden"}`;
     div.textContent=c.open?c.num:"?";
-    div.onclick=()=>{};
     pb.appendChild(div);
   });
 
@@ -173,7 +187,7 @@ function render() {
 
   document.getElementById("message").textContent = state.message || "";
 
-  // 数字ボタン有効化
+  // ボタン制御
   const buttons = document.querySelectorAll("#numberButtons button, #stayBtn");
   buttons.forEach(b=>{
     b.disabled = state.turn !== playerId || state.winner;
