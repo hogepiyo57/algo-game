@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.2</title>
+  <title>ALGO ONLINE Ver1.3</title>
   <style>
     body {
       font-family: sans-serif;
@@ -47,10 +47,15 @@
     #numberSelect { display: flex; justify-content: center; gap: 5px; margin: 10px 0; flex-wrap: wrap; }
     #numberSelect button { width: 40px; height: 40px; font-size: 18px; }
     #log { margin-top: 20px; max-height: 200px; overflow-y: auto; text-align: left; }
+    #turnNotice {
+      font-size: 20px;
+      margin-top: 10px;
+      color: #ffd700;
+    }
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.2</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.3</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -64,6 +69,7 @@
 
   <div id="game">
     <h2 id="status"></h2>
+    <div id="turnNotice"></div>
 
     <h3>相手のカード</h3>
     <div id="opponentCards" class="card-row"></div>
@@ -108,7 +114,7 @@
       const cards = generateCards();
       await set(ref(db, "rooms/" + roomCode), {
         players: { white: { cards: cards.slice(0,4) }, black: { cards: cards.slice(4,8) } },
-        deck: cards.slice(8), // 残り16枚（山）
+        deck: cards.slice(8),
         turn: "white",
         logs: [],
         winner: null
@@ -141,13 +147,10 @@
       for (let color of ["white", "black"]) {
         for (let i = 0; i <= 11; i++) all.push({ color, num: i, open: false });
       }
-      // シャッフル
       for (let i = all.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [all[i], all[j]] = [all[j], all[i]];
       }
-      // 並び順統一（数字優先、同値なら白優先）
-      all.sort((a,b)=>a.num!==b.num?a.num-b.num:(a.color==="white"?-1:1));
       return all;
     }
 
@@ -158,18 +161,11 @@
       const snap = await get(ref(db, "rooms/" + roomCode));
       const room = snap.val();
       if (room.winner) return;
-
-      if (room.turn !== myColor) {
-        alert("相手のターンだ");
-        return;
-      }
+      if (room.turn !== myColor) return alert("相手のターンだ");
 
       const opp = myColor === "white" ? "black" : "white";
       const target = room.players[opp].cards[targetIndex];
-      if (target.open) {
-        alert("そのカードはすでにオープン済み");
-        return;
-      }
+      if (target.open) return alert("そのカードはすでにオープン済み");
 
       let result = "";
       if (target.num === guessNum) {
@@ -183,15 +179,14 @@
       }
 
       const winner = checkWinner(room);
-
       await update(ref(db, "rooms/" + roomCode), {
         players: room.players,
         turn: myColor === "white" ? "black" : "white",
         logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
         winner
       });
+
       selectedIndex = null;
-      render(room);
     }
 
     function checkWinner(room) {
@@ -202,6 +197,9 @@
       return null;
     }
 
+    // =====================================================
+    // 初期UIセットアップ
+    // =====================================================
     function startGame() {
       document.getElementById("menu").style.display = "none";
       document.getElementById("joinArea").style.display = "none";
@@ -210,9 +208,6 @@
       setupNumberButtons();
     }
 
-    // =====================================================
-    // 数字選択ボタンセットアップ
-    // =====================================================
     function setupNumberButtons() {
       const numDiv = document.getElementById("numberSelect");
       numDiv.innerHTML = "";
@@ -228,12 +223,14 @@
     }
 
     // =====================================================
-    // 描画
+    // 描画処理
     // =====================================================
     function render(room) {
       const opp = myColor==="white"?"black":"white";
       const oppDiv=document.getElementById("opponentCards");
       const myDiv=document.getElementById("myCards");
+      const turnNotice=document.getElementById("turnNotice");
+
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
@@ -249,6 +246,8 @@
           div.classList.add("selected");
           selectedIndex=i;
         };
+        // 前回の選択を維持
+        if(selectedIndex===i) div.classList.add("selected");
         oppDiv.appendChild(div);
       });
 
@@ -256,19 +255,20 @@
       room.players[myColor].cards.forEach(c=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
-        if(c.open) {
-          div.textContent=c.num;
-        } else {
-          div.textContent=c.num; // 自分は常に数字を見える
-        }
+        div.textContent=c.num;
         myDiv.appendChild(div);
       });
 
-      document.getElementById("status").innerText = 
-        room.winner
-        ? (room.winner===myColor?"勝利！":"敗北…")
-        : (room.turn===myColor?"あなたのターン":"相手のターン");
+      // ターン表示
+      if (room.winner) {
+        turnNotice.innerText = (room.winner===myColor?"勝利！":"敗北…");
+      } else if (room.turn===myColor) {
+        turnNotice.innerText = "あなたの番です";
+      } else {
+        turnNotice.innerText = "相手の番です";
+      }
 
+      // ログ
       const logDiv=document.getElementById("log");
       logDiv.innerHTML="";
       room.logs.slice().reverse().forEach(l=>{
