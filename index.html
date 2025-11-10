@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver1.5</title>
+  <title>ALGO ONLINE Ver1.8</title>
   <style>
     body {
       font-family: sans-serif;
@@ -43,6 +43,9 @@
     .white-card { background: #fff; color: #000; border: 2px solid #000; }
     .black-card { background: #000; color: #fff; border: 2px solid #fff; }
     .selected { outline: 4px solid yellow; }
+    .self-closed { box-shadow: 0 0 0 3px #555 inset; }
+    .self-open   { box-shadow: 0 0 0 3px #38c172 inset; }
+
     button { padding: 6px 12px; margin: 8px; cursor: pointer; }
     #numberSelect { display: flex; justify-content: center; gap: 5px; margin: 10px 0; flex-wrap: wrap; }
     #numberSelect button { width: 40px; height: 40px; font-size: 18px; }
@@ -52,10 +55,17 @@
       margin-top: 10px;
       color: #ffd700;
     }
+    #lastResult {
+      margin-top: 8px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .success { color: #7CFC00; }
+    .failure { color: #ff6b6b; }
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE<span class="version">Ver1.5</span></h1>
+  <h1>ALGO ONLINE<span class="version">Ver1.8</span></h1>
 
   <div id="menu">
     <button id="createBtn">ゲームコード発行</button>
@@ -70,6 +80,7 @@
   <div id="game">
     <h2 id="status"></h2>
     <div id="turnNotice"></div>
+    <div id="lastResult"></div>
 
     <h3>相手のカード</h3>
     <div id="opponentCards" class="card-row"></div>
@@ -82,7 +93,6 @@
   </div>
 
   <script type="module">
-    // なかむらの環境に合わせて 12.5.0 を使う
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
     import { getDatabase, ref, set, update, onValue, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
@@ -101,13 +111,13 @@
 
     let myColor = null;
     let roomCode = null;
-    let selectedIndex = null;
+    let selectedIndex = null;     // 相手のカードを宣言するときに選んだindex
 
     const createBtn = document.getElementById("createBtn");
     const joinBtn = document.getElementById("joinBtn");
     const enterRoom = document.getElementById("enterRoom");
 
-    // 1. ルーム作成
+    // ルーム作成
     createBtn.onclick = async () => {
       roomCode = Math.floor(Math.random() * 9000) + 1000;
       const cards = generateCards();
@@ -116,6 +126,9 @@
         deck: cards.slice(8),
         turn: "white",
         logs: [],
+        lastResult: "",
+        lastResultType: "",
+        pendingOpen: null,  // {player: "white", nextTurn: "black"}
         winner: null
       });
       myColor = "white";
@@ -124,7 +137,7 @@
       watchRoom();
     };
 
-    // 2. 入室
+    // 入室
     joinBtn.onclick = () => {
       document.getElementById("joinArea").style.display = "block";
     };
@@ -152,52 +165,96 @@
       return all;
     }
 
-    // アタック処理（正解なら連続アタック）
+    // 宣言
     async function makeGuess(targetIndex, guessNum) {
-      console.log("makeGuess called with", targetIndex, guessNum);
       const snap = await get(ref(db, "rooms/" + roomCode));
       const room = snap.val();
-      if (!room) return console.log("room not found");
-      if (room.winner) return console.log("game already finished");
+      if (!room) return;
+      if (room.winner) return;
+
+      // 誰かがオープン待ちなら先にそれを済ませる
+      if (room.pendingOpen) {
+        alert("先にオープンを選んでください");
+        return;
+      }
 
       if (room.turn !== myColor) {
-        alert("相手のターンだ");
+        alert("相手の番だ");
         return;
       }
 
       const opp = myColor === "white" ? "black" : "white";
-      const target = room.players[opp].cards[targetIndex];
-      if (target.open) {
-        alert("そのカードはすでにオープン済み");
+      const targetCard = room.players[opp].cards[targetIndex];
+      if (targetCard.open) {
+        alert("そのカードは開いている");
         return;
       }
 
-      let result = "";
-      let nextTurn = opp; // デフォルトは交代
+      let resultText = "";
+      let resultType = "";
+      let nextTurn = opp;
+      let pendingOpen = null;
 
-      if (target.num === guessNum) {
-        result = "correct";
+      if (targetCard.num === guessNum) {
+        // 成功
         room.players[opp].cards[targetIndex].open = true;
-        nextTurn = myColor; // 正解なら手番キープ
+        resultText = `成功：相手の${targetIndex}番は「${guessNum}」だった。`;
+        resultType = "success";
+        nextTurn = myColor; // 連続アタック
       } else {
-        result = "wrong";
-        const selfCards = room.players[myColor].cards;
-        const unopened = selfCards.find(c => !c.open);
-        if (unopened) unopened.open = true;
+        // 失敗 → このプレイヤーに「自分のカードを選ばせる」フラグを立てる
+        resultText = `失敗：自分の伏せカードを1枚オープンしてください。`;
+        resultType = "failure";
+        pendingOpen = { player: myColor, nextTurn: opp };
       }
 
       const winner = checkWinner(room);
 
       await update(ref(db, "rooms/" + roomCode), {
         players: room.players,
-        // 勝敗がついてたらターンを無理に進めない
         turn: winner ? room.turn : nextTurn,
-        logs: [...room.logs, { by: myColor, target: opp, index: targetIndex, guess: guessNum, result }],
+        logs: [
+          ...room.logs,
+          {
+            by: myColor,
+            target: opp,
+            index: targetIndex,
+            guess: guessNum,
+            result: resultType
+          }
+        ],
+        lastResult: resultText,
+        lastResultType: resultType,
+        pendingOpen: pendingOpen,
         winner
       });
 
       selectedIndex = null;
-      console.log("guess done:", result);
+    }
+
+    // 失敗後に自分のカードをクリックして開ける処理
+    async function openMyCard(cardIndex) {
+      const snap = await get(ref(db, "rooms/" + roomCode));
+      const room = snap.val();
+      if (!room || !room.pendingOpen) return;
+
+      // 自分に対する要求か確認
+      if (room.pendingOpen.player !== myColor) return;
+
+      // そのカードが伏せか確認
+      if (room.players[myColor].cards[cardIndex].open) return;
+
+      room.players[myColor].cards[cardIndex].open = true;
+
+      const nextTurn = room.pendingOpen.nextTurn;
+
+      await update(ref(db, "rooms/" + roomCode), {
+        players: room.players,
+        turn: nextTurn,
+        pendingOpen: null,
+        lastResult: `失敗：自分の${cardIndex}番を公開。`,
+        lastResultType: "failure"
+      });
     }
 
     function checkWinner(room) {
@@ -208,7 +265,6 @@
       return null;
     }
 
-    // 画面表示開始
     function startGame() {
       document.getElementById("menu").style.display = "none";
       document.getElementById("joinArea").style.display = "none";
@@ -217,21 +273,20 @@
       setupNumberButtons();
     }
 
-    // 数字ボタン生成（ここが今回の要所）
+    // 数字ボタン
     function setupNumberButtons() {
       const numDiv = document.getElementById("numberSelect");
       numDiv.innerHTML = "";
       for (let i = 0; i <= 11; i++) {
         const b = document.createElement("button");
         b.textContent = i;
-        b.addEventListener("click", async () => {
-          console.log("number button clicked:", i, "selectedIndex:", selectedIndex);
+        b.onclick = async () => {
           if (selectedIndex !== null) {
             await makeGuess(selectedIndex, i);
           } else {
-            alert("相手のカードを選べ");
+            alert("先に相手のカードを選べ");
           }
-        });
+        };
         numDiv.appendChild(b);
       }
     }
@@ -242,42 +297,68 @@
       const oppDiv=document.getElementById("opponentCards");
       const myDiv=document.getElementById("myCards");
       const turnNotice=document.getElementById("turnNotice");
+      const lastResultDiv=document.getElementById("lastResult");
 
       oppDiv.innerHTML="";
       myDiv.innerHTML="";
 
-      // 相手カード
+      // 相手カード（宣言用）
       room.players[opp].cards.forEach((c,i)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
         if(!c.open) div.classList.add("closed");
         div.textContent=c.open?c.num:"?";
         div.onclick=()=>{
+          // 誰かがオープン待ちなら宣言先を変えない
+          if(room.pendingOpen) return;
           if(room.turn!==myColor) return;
           document.querySelectorAll(".card").forEach(el=>el.classList.remove("selected"));
           div.classList.add("selected");
           selectedIndex=i;
-          console.log("card selected:", i);
         };
         if(selectedIndex===i) div.classList.add("selected");
         oppDiv.appendChild(div);
       });
 
-      // 自分カード
-      room.players[myColor].cards.forEach(c=>{
+      // 自分カード（オープン選択対応）
+      room.players[myColor].cards.forEach((c,idx)=>{
         const div=document.createElement("div");
         div.className="card "+(c.color==="white"?"white-card":"black-card");
-        div.textContent=c.num; // 自分は常に見える
+        div.textContent=c.num;
+        div.classList.add(c.open ? "self-open" : "self-closed");
+
+        // pendingOpen が自分宛てのときだけ、伏せカードをクリックで開ける
+        if (room.pendingOpen && room.pendingOpen.player === myColor && !c.open) {
+          div.onclick = () => openMyCard(idx);
+          div.style.cursor = "pointer";
+        } else {
+          // それ以外はクリック無効
+          div.onclick = null;
+          div.style.cursor = "default";
+        }
+
         myDiv.appendChild(div);
       });
 
       // ターン表示
       if (room.winner) {
         turnNotice.innerText = (room.winner===myColor?"勝利！":"敗北…");
+      } else if (room.pendingOpen && room.pendingOpen.player === myColor) {
+        turnNotice.innerText = "オープンにするカードを選んでください";
       } else if (room.turn===myColor) {
         turnNotice.innerText = "あなたの番です";
       } else {
         turnNotice.innerText = "相手の番です";
+      }
+
+      // 成功/失敗表示
+      lastResultDiv.innerText = room.lastResult || "";
+      lastResultDiv.className = "";
+      lastResultDiv.id = "lastResult";
+      if (room.lastResultType === "success") {
+        lastResultDiv.classList.add("success");
+      } else if (room.lastResultType === "failure") {
+        lastResultDiv.classList.add("failure");
       }
 
       // ログ
@@ -285,12 +366,12 @@
       logDiv.innerHTML="";
       room.logs.slice().reverse().forEach(l=>{
         const p=document.createElement("div");
-        p.textContent=`${l.by}→${l.target}[${l.index}] 宣言${l.guess} → ${l.result}`;
+        p.textContent=`${l.by}→${l.target}[${l.index}] ${l.guess} → ${l.result}`;
         logDiv.appendChild(p);
       });
     }
 
-    // Firebase監視
+    // 監視
     function watchRoom(){
       onValue(ref(db,"rooms/"+roomCode),(snap)=>{
         if(snap.exists()) render(snap.val());
