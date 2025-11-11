@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver5.3</title>
+  <title>ALGO ONLINE Ver5.4</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -54,6 +54,10 @@
       margin-left: 10px;
       cursor: pointer;
     }
+    #stayButton.disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
     #againButton {
       font-size: 16px;
       margin-top: 10px;
@@ -64,7 +68,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver5.3</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver5.4</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -104,12 +108,12 @@
     const auth = getAuth(app);
     signInAnonymously(auth).catch(e => console.error(e));
 
-    // 並び方：数字→同値なら黒が左
+    // 並べ方：数字→同値なら黒が左
     const colorRank = c => (c === "black" ? 0 : 1);
     const sortCards = cards => cards.sort((a,b)=>(a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
 
     // ===== 状態 =====
-    let playerRole = null;          // "white" or "black" だけど表示は「あなた」「相手」にする
+    let playerRole = null;
     let roomCode   = null;
     let selectedCard = null;
     let waitingForOwnOpen = false;
@@ -165,9 +169,7 @@
       if (!code) { alert("コードを入力"); return; }
       roomCode = code;
       playerRole = "black";
-
       await update(ref(db, "rooms/"+roomCode+"/black"), { ready: true });
-
       roomInfo.textContent = "ゲームコード：" + roomCode;
       setupArea.style.display = "none";
       gameArea.style.display  = "block";
@@ -180,7 +182,6 @@
         const data = snap.val();
         if (!data) return;
         latestState = data;
-        // 手番が来ていてまだ引いていなければ引く
         maybeDrawCard(data);
         render(data);
       });
@@ -192,12 +193,11 @@
       if (state.turn !== playerRole) return;
       const me = state[playerRole];
       if (!me) return;
-      const drawn = me.drawn === true; // すでに引いたか
+      const drawn = me.drawn === true;
       const deck  = Array.isArray(state.deck) ? state.deck : [];
       if (drawn) return;
       if (deck.length === 0) return;
 
-      // 1枚引く（先頭から）
       const card = deck[0];
       const newDeck = deck.slice(1);
       const newCards = Array.isArray(me.cards) ? me.cards.slice() : [];
@@ -208,12 +208,10 @@
       updates[`rooms/${roomCode}/${playerRole}/cards`] = newCards;
       updates[`rooms/${roomCode}/${playerRole}/drawn`] = true;
       updates[`rooms/${roomCode}/deck`] = newDeck;
-
       await update(ref(db), updates);
 
-      // 画面上の案内
       if (!me.mustOpen && !state.winner) {
-        message.textContent = "カードを1枚引きました。宣言するカードを選んでください。";
+        message.textContent = "カードを1枚引きました。相手のカードを当ててください。";
       }
     }
 
@@ -247,7 +245,6 @@
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
 
-        // 不正解後、公開待ち
         if (waitingForOwnOpen && !myOpen.includes(i)) {
           div.classList.add("needOpen");
           div.onclick = () => openOwnCard(i);
@@ -278,6 +275,19 @@
         opponentCardsDiv.appendChild(div);
       });
 
+      // ステイ可否：山がないときは不可
+      const deckEmpty = !Array.isArray(state.deck) || state.deck.length === 0;
+      if (deckEmpty) {
+        stayBtn.classList.add("disabled");
+        stayBtn.disabled = true;
+        if (state.turn === playerRole && !waitingForOwnOpen && !state.winner) {
+          message.textContent = "山札がありません。必ず相手のカードを宣言してください。";
+        }
+      } else {
+        stayBtn.classList.remove("disabled");
+        stayBtn.disabled = false;
+      }
+
       turnInfo.textContent = (state.turn === playerRole) ? "あなたの番です" : "相手の番です";
 
       if (state.winner) {
@@ -292,7 +302,7 @@
       });
     }
 
-    // ===== 自分のカードを公開（不正解後） =====
+    // ===== 不正解後に自分のカードを公開 =====
     async function openOwnCard(index) {
       if (!latestState) return;
       const meRole  = playerRole;
@@ -305,7 +315,6 @@
       const updates = {};
       updates[`rooms/${roomCode}/${meRole}/open`] = currentOpen;
       updates[`rooms/${roomCode}/${meRole}/mustOpen`] = false;
-      // 相手に手番を渡し、相手には「まだ引いてない」状態にする
       updates[`rooms/${roomCode}/turn`] = oppRole;
       updates[`rooms/${roomCode}/${oppRole}/drawn`] = false;
 
@@ -345,16 +354,14 @@
       if (!target) return;
 
       if (target.num === num) {
-        // 正解 → 相手のカードを公開。手番はそのまま
+        // 正解：手番はそのまま
         opp.open.push(selectedCard);
         message.textContent = `正解！相手の${selectedCard+1}番は ${num} だった。`;
         if (opp.open.length === opp.cards.length) {
           data.winner = meRole;
         }
-        // drawn は変えない（同じターンで続けて当てられる）
         await set(roomRef, data);
       } else {
-        // 不正解 → 自分で公開
         me.mustOpen = true;
         message.textContent = "不正解！公開する自分のカードを選んでください。";
         await set(roomRef, data);
@@ -366,11 +373,16 @@
 
     // ===== ステイ =====
     stayBtn.onclick = async () => {
+      // UI側で無効になってても二重に守る
+      if (stayBtn.disabled) return;
       if (waitingForOwnOpen) return;
+      // 山札が空でもここに来ないようにしているが一応確認
+      if (!latestState || !Array.isArray(latestState.deck) || latestState.deck.length === 0) return;
+
       const next = (playerRole === "white") ? "black" : "white";
       const updates = {};
       updates[`rooms/${roomCode}/turn`] = next;
-      updates[`rooms/${roomCode}/${next}/drawn`] = false; // 次の人がカードを引けるようにする
+      updates[`rooms/${roomCode}/${next}/drawn`] = false;
       await update(ref(db), updates);
       message.textContent = "ステイしました。相手の番です。";
     };
