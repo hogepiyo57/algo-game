@@ -1,271 +1,290 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ALGO ONLINE Ver4.3</title>
-<style>
-body{
-  background:#222;color:#eee;font-family:"Segoe UI",sans-serif;
-  text-align:center;margin:0;padding:0;
-}
-h1{background:#333;margin:0;padding:12px;font-size:22px;}
-.screen{display:none;}
-.active{display:block;}
-.board{
-  display:flex;justify-content:center;gap:10px;margin:12px;
-  flex-wrap:wrap;
-}
-.card{
-  border-radius:6px;
-  display:flex;justify-content:center;align-items:center;
-  font-weight:bold;font-size:22px;cursor:pointer;border:2px solid #888;
-  transition:transform .1s;
-  width:60px;height:80px;
-}
-.card:hover{transform:scale(1.05);}
-.white{background:#fff;color:#000;}
-.black{background:#000;color:#fff;}
-.self-closed{box-shadow:0 0 0 3px #555 inset;}
-.self-open{box-shadow:0 0 0 3px #0f0 inset;}
-.opp-hidden-white{background:#fff;color:#fff;}
-.opp-hidden-black{background:#000;color:#000;}
-.selected{outline:3px solid #0af; outline-offset:2px;}
-button{
-  margin:5px;padding:10px 14px;font-size:16px;
-  border:none;border-radius:6px;cursor:pointer;
-}
-#numberRow{
-  display:flex;justify-content:center;align-items:center;
-  flex-wrap:wrap;gap:5px;
-  margin:8px auto;
-}
-#numberButtons{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
-#numberButtons button{background:#444;color:#fff;min-width:48px;}
-#stayBtn{background:#777;color:#fff;margin-left:10px;}
-#resetBtn,#retryBtn{background:#a33;color:#fff;}
-#numberButtons button:hover,#stayBtn:hover,#resetBtn:hover,#retryBtn:hover{background:#999;}
-#status{font-size:18px;margin:6px;}
-#subMessage{font-size:16px;color:#ccc;margin-bottom:10px;min-height:22px;}
-input{padding:8px;font-size:16px;width:140px;}
-#roomCodeDisplay,#gameRoomCode{font-size:20px;color:#0f0;font-weight:bold;margin:6px;}
-
-/* --- スマホ表示調整 --- */
-@media (max-width:900px){
-  .card{width:46px;height:60px;font-size:16px;}
-  #numberRow{
-    justify-content:flex-start;
-    overflow-x:auto;
-    white-space:nowrap;
-    scroll-snap-type:x mandatory;
-    padding:4px 10px;
-  }
-  #numberRow::-webkit-scrollbar{display:none;}
-  #numberButtons{flex-wrap:nowrap;}
-  #stayBtn{flex:0 0 auto;}
-  h1{font-size:18px;}
-}
-</style>
+  <meta charset="UTF-8">
+  <title>ALGO ONLINE Ver4.3-secure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #222;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      font-size: 28px;
+      margin-top: 20px;
+    }
+    #version {
+      font-size: 12px;
+      color: #ccc;
+      margin-left: 8px;
+    }
+    #gameArea {
+      margin-top: 20px;
+    }
+    .card {
+      display: inline-block;
+      width: 50px;
+      height: 70px;
+      margin: 5px;
+      border-radius: 8px;
+      line-height: 70px;
+      font-weight: bold;
+      font-size: 22px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .whiteCard {
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+    }
+    .blackCard {
+      background: #000;
+      color: #fff;
+      border: 2px solid #fff;
+    }
+    .hiddenCard {
+      background: #555;
+      color: #555;
+    }
+    .openCard {
+      outline: 3px solid #00ffcc;
+    }
+    #numButtons button {
+      font-size: 18px;
+      width: 40px;
+      margin: 3px;
+      cursor: pointer;
+    }
+    #stayButton, #againButton {
+      font-size: 16px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+    #message {
+      margin-top: 15px;
+      font-size: 20px;
+      min-height: 30px;
+    }
+    #roomInfo {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #ccc;
+    }
+  </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver4.3</small></h1>
-
-<div id="lobby" class="screen active">
-  <p><button id="createRoom">ゲームコード発行</button></p>
-  <div id="roomCodeDisplay"></div>
-  <p>または<br>コードを入力して入室：</p>
-  <input type="text" id="joinCode" maxlength="4" placeholder="例: 4823">
-  <button id="joinRoom">入室する</button>
-  <p id="lobbyMessage"></p>
-</div>
-
-<div id="game" class="screen">
-  <div id="gameRoomCode"></div>
-  <div id="status"></div>
-  <div id="subMessage"></div>
-  <h2>相手</h2>
-  <div id="opponentBoard" class="board"></div>
-  <h2>自分</h2>
-  <div id="playerBoard" class="board"></div>
-
-  <div id="numberRow">
-    <div id="numberButtons"></div>
-    <button id="stayBtn">ステイ</button>
+  <h1>ALGO ONLINE <span id="version">Ver4.3-secure</span></h1>
+  <div id="roomInfo"></div>
+  <div id="setupArea">
+    <button id="createRoom">ゲームコード発行</button>
+    <input id="roomCodeInput" placeholder="ゲームコードを入力" maxlength="4" style="width:80px;text-align:center;">
+    <button id="joinRoom">入室する</button>
   </div>
 
-  <button id="retryBtn" style="display:none;">もう一回</button>
-  <button id="resetBtn">初期化</button>
-</div>
+  <div id="gameArea" style="display:none;">
+    <div id="turnInfo"></div>
+    <div id="message"></div>
+    <h3>あなたの手札</h3>
+    <div id="playerCards"></div>
+    <h3>相手の手札</h3>
+    <div id="opponentCards"></div>
+    <div id="numButtons"></div>
+    <button id="stayButton">ステイ</button>
+    <button id="againButton">もう一回</button>
+  </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, set, get, update, onValue, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-const firebaseConfig = {
-  apiKey:"AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
-  authDomain:"algo-e0da0.firebaseapp.com",
-  databaseURL:"https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:"algo-e0da0",
-  storageBucket:"algo-e0da0.firebasestorage.app",
-  messagingSenderId:"87259521629",
-  appId:"1:87259521629:web:35953641ebd0c4a8f123b4"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    // Firebase設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
+      authDomain: "algo-e0da0.firebaseapp.com",
+      databaseURL: "https://algo-e0da0-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "algo-e0da0",
+      storageBucket: "algo-e0da0.firebasestorage.app",
+      messagingSenderId: "87259521629",
+      appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
+    };
 
-let roomId=null, playerId=null, opponentId=null;
-let state=null, selectedTarget=null, drawDone=false;
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
 
-function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
-function sortCards(cards){cards.sort((a,b)=>(a.num===b.num?(a.color==="black"?-1:1):a.num-b.num));}
+    // 匿名ログイン
+    signInAnonymously(auth)
+      .then(() => console.log("匿名ログイン成功"))
+      .catch((err) => console.error("ログイン失敗:", err));
 
-document.getElementById("createRoom").onclick=async()=>{
-  roomId=Math.floor(1000+Math.random()*9000).toString();
-  playerId="white"; opponentId="black";
-  await createNewRoom(roomId);
-  document.getElementById("roomCodeDisplay").textContent="コード: "+roomId;
-  document.getElementById("lobbyMessage").textContent=`コード ${roomId} を相手に伝えてください。`;
-  switchToGame();
-};
-document.getElementById("joinRoom").onclick=async()=>{
-  roomId=document.getElementById("joinCode").value.trim();
-  if(roomId.length!==4){alert("4桁のコードを入力");return;}
-  const snap=await get(ref(db,`rooms/${roomId}`));
-  if(!snap.exists()){alert("ルームが存在しません");return;}
-  playerId="black"; opponentId="white";
-  await update(ref(db,`rooms/${roomId}/players/black`),{connected:true});
-  switchToGame();
-};
+    let playerRole = null;
+    let roomCode = null;
 
-async function createNewRoom(id){
-  const deck=[];
-  ["white","black"].forEach(c=>{for(let n=0;n<=11;n++) deck.push({num:n,color:c});});
-  shuffle(deck);
-  const whiteCards=deck.splice(0,4);
-  const blackCards=deck.splice(0,4);
-  sortCards(whiteCards); sortCards(blackCards);
-  const data={
-    players:{
-      white:{cards:whiteCards,connected:true},
-      black:{cards:blackCards,connected:true}
-    },
-    deck,
-    turn:"white",
-    message:"",
-    winner:null
-  };
-  await set(ref(db,`rooms/${id}`),data);
-}
+    const createRoomBtn = document.getElementById("createRoom");
+    const joinRoomBtn = document.getElementById("joinRoom");
+    const setupArea = document.getElementById("setupArea");
+    const gameArea = document.getElementById("gameArea");
+    const roomInfo = document.getElementById("roomInfo");
+    const message = document.getElementById("message");
+    const playerCardsDiv = document.getElementById("playerCards");
+    const opponentCardsDiv = document.getElementById("opponentCards");
+    const numButtonsDiv = document.getElementById("numButtons");
+    const stayBtn = document.getElementById("stayButton");
+    const againBtn = document.getElementById("againButton");
+    const turnInfo = document.getElementById("turnInfo");
 
-function switchToGame(){
-  document.getElementById("lobby").classList.remove("active");
-  document.getElementById("game").classList.add("active");
-  document.getElementById("gameRoomCode").textContent = "コード: " + roomId;
-  startGameListener();
-}
-
-function startGameListener(){
-  onValue(ref(db,`rooms/${roomId}`), async (snap)=>{
-    if(!snap.exists()) return;
-    state = snap.val();
-    if (!state.winner && state.turn === playerId && !drawDone && state.deck && state.deck.length > 0) {
-      drawDone = true;
-      const card = state.deck.pop();
-      state.players[playerId].cards.push(card);
-      sortCards(state.players[playerId].cards);
-      state.message = "カードを1枚引きました";
-      await update(ref(db,`rooms/${roomId}`), state);
+    const allCards = [];
+    for (let color of ["white", "black"]) {
+      for (let num = 0; num <= 11; num++) {
+        allCards.push({ color, num });
+      }
     }
-    render();
-  });
-}
 
-function render(){
-  if(!state) return;
-  const my = state.players[playerId];
-  const op = state.players[opponentId];
-  const status = document.getElementById("status");
-  const sub = document.getElementById("subMessage");
+    // ゲーム作成
+    createRoomBtn.onclick = async () => {
+      roomCode = Math.floor(1000 + Math.random() * 9000);
+      playerRole = "white";
+      const shuffled = [...allCards].sort(() => Math.random() - 0.5);
+      const whiteCards = shuffled.slice(0, 4);
+      const blackCards = shuffled.slice(4, 8);
+      await set(ref(db, "rooms/" + roomCode), {
+        white: { cards: whiteCards, open: [], ready: true },
+        black: { cards: blackCards, open: [], ready: false },
+        turn: "white",
+        winner: null
+      });
+      roomInfo.textContent = "ゲームコード：" + roomCode;
+      setupArea.style.display = "none";
+      gameArea.style.display = "block";
+      startGameListener();
+    };
 
-  if (state.winner) {
-    status.textContent = (state.winner === playerId) ? "あなたの勝ち" : "あなたの負け";
-    sub.textContent = "";
-    document.getElementById("retryBtn").style.display = "inline-block";
-  } else {
-    document.getElementById("retryBtn").style.display = "none";
-    status.textContent = (state.turn === playerId) ? "あなたの番です！" : "相手の番です";
-    sub.textContent = (selectedTarget!=null) ? `相手の ${selectedTarget+1} 枚目を選択中` : state.message || "";
-  }
+    // 入室
+    joinRoomBtn.onclick = async () => {
+      roomCode = document.getElementById("roomCodeInput").value.trim();
+      if (!roomCode) return alert("コードを入力");
+      playerRole = "black";
+      const r = ref(db, "rooms/" + roomCode + "/black");
+      await update(r, { ready: true });
+      roomInfo.textContent = "ゲームコード：" + roomCode;
+      setupArea.style.display = "none";
+      gameArea.style.display = "block";
+      startGameListener();
+    };
 
-  const pb = document.getElementById("playerBoard");
-  pb.innerHTML = "";
-  my.cards.forEach((c,i)=>{
-    const div = document.createElement("div");
-    div.className = `card ${c.color} ${c.open ? "self-open" : "self-closed"}`;
-    div.textContent = c.num;
-    if (!state.winner && state.turn===playerId && state.message==="失敗…カードを選んでください" && !c.open){
-      div.onclick = ()=>openMyCard(i);
+    // リスナー起動
+    function startGameListener() {
+      const roomRef = ref(db, "rooms/" + roomCode);
+      onValue(roomRef, (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        render(data);
+      });
     }
-    pb.appendChild(div);
-  });
 
-  const ob = document.getElementById("opponentBoard");
-  ob.innerHTML = "";
-  op.cards.forEach((c,i)=>{
-    const div = document.createElement("div");
-    if(c.open){div.className=`card ${c.color}`;div.textContent=c.num;}
-    else{div.className=c.color==="white"?"card opp-hidden-white":"card opp-hidden-black";}
-    if (!state.winner && state.turn===playerId && state.message!=="失敗…カードを選んでください" && !c.open){
-      div.onclick=()=>{
-        ob.querySelectorAll(".selected").forEach(el=>el.classList.remove("selected"));
-        selectedTarget=i;div.classList.add("selected");
-        sub.textContent=`相手の ${i+1} 枚目を選択中`;
+    // 描画
+    function render(state) {
+      const me = state[playerRole];
+      const opponent = state[playerRole === "white" ? "black" : "white"];
+      playerCardsDiv.innerHTML = "";
+      opponentCardsDiv.innerHTML = "";
+
+      me.cards.forEach((c, i) => {
+        const div = document.createElement("div");
+        div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
+        div.textContent = c.num;
+        if (me.open.includes(i)) div.classList.add("openCard");
+        playerCardsDiv.appendChild(div);
+      });
+
+      opponent.cards.forEach((c, i) => {
+        const div = document.createElement("div");
+        div.className = "card hiddenCard";
+        div.style.background = c.color === "white" ? "#bbb" : "#333";
+        div.dataset.index = i;
+        div.onclick = () => {
+          if (state.turn === playerRole) {
+            selectedCard = i;
+            message.textContent = `相手の${i + 1}番目のカードを選択中`;
+          }
+        };
+        if (opponent.open.includes(i)) {
+          div.textContent = c.num;
+          div.style.background = c.color === "white" ? "#fff" : "#000";
+          div.style.color = c.color === "white" ? "#000" : "#fff";
+          div.classList.remove("hiddenCard");
+        }
+        opponentCardsDiv.appendChild(div);
+      });
+
+      turnInfo.textContent = state.turn === playerRole ? "あなたの番です" : "相手の番です";
+
+      if (state.winner) {
+        message.textContent = (state.winner === playerRole) ? "あなたの勝ち！" : "あなたの負け...";
+      }
+    }
+
+    // 数字ボタン
+    for (let i = 0; i <= 11; i++) {
+      const btn = document.createElement("button");
+      btn.textContent = i;
+      btn.onclick = () => {
+        makeGuess(i);
       };
+      numButtonsDiv.appendChild(btn);
     }
-    ob.appendChild(div);
-  });
 
-  const disable=(state.turn!==playerId)||state.winner||state.message==="失敗…カードを選んでください";
-  document.querySelectorAll("#numberButtons button,#stayBtn").forEach(b=>b.disabled=disable);
-}
+    let selectedCard = null;
 
-for(let n=0;n<=11;n++){
-  const b=document.createElement("button");
-  b.textContent=n;
-  b.onclick=()=>attack(n);
-  document.getElementById("numberButtons").appendChild(b);
-}
+    async function makeGuess(num) {
+      if (selectedCard === null) return;
+      const roomRef = ref(db, "rooms/" + roomCode);
+      const snap = await get(roomRef);
+      const data = snap.val();
+      const me = data[playerRole];
+      const opponentRole = playerRole === "white" ? "black" : "white";
+      const opponent = data[opponentRole];
 
-async function attack(num){
-  if(selectedTarget==null||state.winner)return;
-  const op=state.players[opponentId];
-  const target=op.cards[selectedTarget];
-  let msg="";
-  if(target.num===num){
-    target.open=true;msg=`正解！ ${num}`;
-    if(op.cards.every(c=>c.open)){state.winner=playerId;msg="決着";}
-  }else{msg="失敗…カードを選んでください";}
-  state.message=msg;selectedTarget=null;
-  await update(ref(db,`rooms/${roomId}`),state);
-}
+      const target = opponent.cards[selectedCard];
+      if (!target) return;
 
-async function openMyCard(i){
-  const my=state.players[playerId];
-  my.cards[i].open=true;
-  state.turn=opponentId;state.message="ターン交代";drawDone=false;
-  await update(ref(db,`rooms/${roomId}`),state);
-}
+      if (target.num === num) {
+        opponent.open.push(selectedCard);
+        message.textContent = `正解！${opponentRole}の${selectedCard + 1}番は${num}`;
+        if (opponent.open.length === opponent.cards.length) {
+          data.winner = playerRole;
+        }
+      } else {
+        me.open.push(findFirstClosed(me));
+        message.textContent = `不正解！自分の${me.open[me.open.length - 1] + 1}番を公開`;
+        data.turn = opponentRole;
+      }
 
-document.getElementById("stayBtn").onclick=async()=>{
-  state.turn=opponentId;state.message="ステイしました";drawDone=false;
-  selectedTarget=null;await update(ref(db,`rooms/${roomId}`),state);
-};
-document.getElementById("retryBtn").onclick=async()=>{
-  await createNewRoom(roomId);selectedTarget=null;drawDone=false;
-};
-document.getElementById("resetBtn").onclick=async()=>{
-  await remove(ref(db,`rooms/${roomId}`));location.reload();
-};
-</script>
+      await set(roomRef, data);
+      selectedCard = null;
+    }
+
+    function findFirstClosed(me) {
+      for (let i = 0; i < me.cards.length; i++) {
+        if (!me.open.includes(i)) return i;
+      }
+      return 0;
+    }
+
+    stayBtn.onclick = async () => {
+      const roomRef = ref(db, "rooms/" + roomCode + "/turn");
+      const next = playerRole === "white" ? "black" : "white";
+      await set(roomRef, next);
+      message.textContent = "ステイしました。相手の番です。";
+    };
+
+    againBtn.onclick = () => location.reload();
+  </script>
 </body>
 </html>
