@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.8</title>
+  <title>ALGO ONLINE Ver4.9</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -27,14 +27,12 @@
       font-size: 22px;
       cursor: pointer;
       user-select: none;
-      transition: transform 0.2s;
     }
-    .card:hover { transform: scale(1.05); }
     .whiteCard { background: #fff; color: #000; border: 2px solid #000; }
     .blackCard { background: #000; color: #fff; border: 2px solid #fff; }
     .hiddenCard { color: transparent; border: 2px solid #888; }
     .openCard { outline: 3px solid #00ffcc; }
-    #numButtons { margin-top: 10px; }
+    #numButtons { margin-top: 10px; display: inline-block; }
     #numButtons button {
       font-size: 18px;
       width: 40px;
@@ -63,7 +61,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver4.8</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver4.9</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -88,6 +86,7 @@
     import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
+    // Firebase初期化
     const firebaseConfig = {
       apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
       authDomain: "algo-e0da0.firebaseapp.com",
@@ -97,158 +96,226 @@
       messagingSenderId: "87259521629",
       appId: "1:87259521629:web:35953641ebd0c4a8f123b4"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
-    signInAnonymously(auth).catch(err => console.error("ログイン失敗:", err));
+    signInAnonymously(auth).then(()=>console.log("匿名ログイン")).catch(e=>console.error(e));
 
+    // 並べ方：数字小さい→大きい、同数なら黒が左
     const colorRank = c => (c === "black" ? 0 : 1);
-    const sortCards = cards => cards.sort((a, b) => (a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
+    const sortCards = cards => cards.sort((a,b)=>(a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
 
+    // 状態
     let playerRole = null;
     let roomCode = null;
-    let selectedCard = null;
-    let waitingForOwnOpen = false;
+    let selectedCard = null;      // 相手側で選んだカードのindex
+    let waitingForOwnOpen = false; // アタック失敗後に自分のカードを選ぶ段階かどうか
 
-    const el = id => document.getElementById(id);
-    const setupArea = el("setupArea"), gameArea = el("gameArea"), roomInfo = el("roomInfo");
-    const message = el("message"), playerCardsDiv = el("playerCards"), opponentCardsDiv = el("opponentCards");
-    const numButtonsDiv = el("numButtons"), stayBtn = el("stayButton"), againBtn = el("againButton"), turnInfo = el("turnInfo");
+    // 要素
+    const setupArea = document.getElementById("setupArea");
+    const gameArea  = document.getElementById("gameArea");
+    const roomInfo  = document.getElementById("roomInfo");
+    const message   = document.getElementById("message");
+    const turnInfo  = document.getElementById("turnInfo");
+    const playerCardsDiv   = document.getElementById("playerCards");
+    const opponentCardsDiv = document.getElementById("opponentCards");
+    const numButtonsDiv    = document.getElementById("numButtons");
+    const stayBtn          = document.getElementById("stayButton");
+    const againBtn         = document.getElementById("againButton");
 
+    // 全24枚
     const allCards = [];
-    for (let color of ["white", "black"]) for (let num = 0; num <= 11; num++) allCards.push({ color, num });
+    for (let color of ["white","black"]) {
+      for (let num=0; num<=11; num++) {
+        allCards.push({color,num});
+      }
+    }
 
-    el("createRoom").onclick = async () => {
-      roomCode = Math.floor(1000 + Math.random() * 9000);
+    // ルーム作成
+    document.getElementById("createRoom").onclick = async () => {
+      roomCode = Math.floor(1000 + Math.random()*9000).toString();
       playerRole = "white";
-      const shuffled = [...allCards].sort(() => Math.random() - 0.5);
-      const whiteCards = sortCards(shuffled.slice(0, 4));
-      const blackCards = sortCards(shuffled.slice(4, 8));
-      await set(ref(db, "rooms/" + roomCode), {
+
+      const shuffled = [...allCards].sort(()=>Math.random()-0.5);
+      const whiteCards = sortCards(shuffled.slice(0,4));
+      const blackCards = sortCards(shuffled.slice(4,8));
+
+      await set(ref(db, "rooms/"+roomCode), {
         white: { cards: whiteCards, open: [], ready: true },
         black: { cards: blackCards, open: [], ready: false },
-        turn: "white", winner: null
+        turn: "white",
+        winner: null
       });
+
       roomInfo.textContent = "ゲームコード：" + roomCode;
-      setupArea.style.display = "none"; gameArea.style.display = "block";
-      startGameListener();
+      setupArea.style.display = "none";
+      gameArea.style.display  = "block";
+      startListener();
     };
 
-    el("joinRoom").onclick = async () => {
-      roomCode = el("roomCodeInput").value.trim();
-      if (!roomCode) return alert("コードを入力");
+    // ルーム参加
+    document.getElementById("joinRoom").onclick = async () => {
+      const code = document.getElementById("roomCodeInput").value.trim();
+      if (!code) { alert("コードを入力"); return; }
+      roomCode = code;
       playerRole = "black";
-      await update(ref(db, "rooms/" + roomCode + "/black"), { ready: true });
+
+      // black側をreadyに
+      await update(ref(db, "rooms/"+roomCode+"/black"), { ready: true });
+
       roomInfo.textContent = "ゲームコード：" + roomCode;
-      setupArea.style.display = "none"; gameArea.style.display = "block";
-      startGameListener();
+      setupArea.style.display = "none";
+      gameArea.style.display  = "block";
+      startListener();
     };
 
-    function startGameListener() {
-      onValue(ref(db, "rooms/" + roomCode), snap => {
-        const data = snap.val(); if (data) render(data);
+    // リアルタイム反映
+    function startListener() {
+      onValue(ref(db, "rooms/"+roomCode), snap => {
+        const data = snap.val();
+        if (!data) return;
+        render(data);
       });
     }
 
+    // 描画
     function render(state) {
-      const me = state[playerRole];
-      const opponentRole = playerRole === "white" ? "black" : "white";
-      const opponent = state[opponentRole];
+      const me   = state[playerRole];
+      const oppRole = (playerRole === "white") ? "black" : "white";
+      const opp  = state[oppRole];
 
-      // 🧩 cards未読み込み対策
-      if (!me || !opponent || !Array.isArray(me.cards) || !Array.isArray(opponent.cards)) {
-        message.textContent = "カードを配布中...";
+      // 相手がまだ入ってない時に落ちないように
+      if (!me || !opp || !me.cards || !opp.cards) {
+        message.textContent = "相手の接続を待っています...";
         return;
       }
 
-      sortCards(me.cards); sortCards(opponent.cards);
-      playerCardsDiv.innerHTML = ""; opponentCardsDiv.innerHTML = "";
+      // 並びを毎回整える
+      sortCards(me.cards);
+      sortCards(opp.cards);
 
-      // === 自分のカード ===
+      playerCardsDiv.innerHTML = "";
+      opponentCardsDiv.innerHTML = "";
+
+      // 自分のカード
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
 
+        // アタック失敗後に自分で公開するフェーズ
         if (waitingForOwnOpen && !me.open.includes(i)) {
           div.style.outline = "2px solid yellow";
-          div.onclick = async () => {
-            const roomRef = ref(db, "rooms/" + roomCode);
-            const snap = await get(roomRef);
-            const data = snap.val();
-            data[playerRole].open.push(i);
-            data.turn = opponentRole;
-            waitingForOwnOpen = false;
-            message.textContent = `自分の${i + 1}番を公開した。相手の番です。`;
-            await set(roomRef, data);
-          };
+          div.onclick = () => openOwnCard(i, oppRole);
         }
 
-        if (me.open.includes(i)) div.classList.add("openCard");
+        if (me.open.includes(i)) {
+          div.classList.add("openCard");
+        }
+
         playerCardsDiv.appendChild(div);
       });
 
-      // === 相手のカード ===
-      opponent.cards.forEach((c, i) => {
+      // 相手のカード（伏せ：白は白、黒は黒っぽいグレー）
+      opp.cards.forEach((c, i) => {
         const div = document.createElement("div");
-        if (opponent.open.includes(i)) {
+
+        if (opp.open.includes(i)) {
+          // 公開済み
           div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
           div.textContent = c.num;
         } else {
+          // 伏せ
           div.className = "card hiddenCard";
           div.style.background = c.color === "white" ? "#fff" : "#333";
           div.onclick = () => {
             if (state.turn === playerRole && !waitingForOwnOpen) {
               selectedCard = i;
-              message.textContent = `相手の${i + 1}番目を選択中`;
+              message.textContent = `相手の${i+1}番を選択中`;
             }
           };
         }
+
         opponentCardsDiv.appendChild(div);
       });
 
-      turnInfo.textContent = state.turn === playerRole ? "あなたの番です" : "相手の番です";
-      if (state.winner)
+      // ターン表示
+      turnInfo.textContent = (state.turn === playerRole) ? "あなたの番です" : "相手の番です";
+
+      // 勝敗
+      if (state.winner) {
         message.textContent = (state.winner === playerRole) ? "あなたの勝ち！" : "あなたの負け...";
+      }
     }
 
-    for (let i = 0; i <= 11; i++) {
-      const btn = document.createElement("button");
-      btn.textContent = i;
-      btn.onclick = () => makeGuess(i);
-      numButtonsDiv.appendChild(btn);
-    }
-
-    async function makeGuess(num) {
-      if (selectedCard === null || waitingForOwnOpen) return;
+    // 自分のカードを公開する（失敗時専用）
+    async function openOwnCard(index, opponentRole) {
       const roomRef = ref(db, "rooms/" + roomCode);
       const snap = await get(roomRef);
       const data = snap.val();
-      const me = data[playerRole], opponentRole = playerRole === "white" ? "black" : "white", opponent = data[opponentRole];
-      const target = opponent.cards[selectedCard];
+      if (!data) return;
+
+      const me = data[playerRole];
+      me.open.push(index);  // 指定したカードを公開
+      data.turn = opponentRole;  // 相手の手番へ
+      waitingForOwnOpen = false;
+      await set(roomRef, data);
+      message.textContent = `自分の${index+1}番を公開した。相手の番です。`;
+    }
+
+    // 数字ボタン生成
+    for (let n=0; n<=11; n++) {
+      const btn = document.createElement("button");
+      btn.textContent = n;
+      btn.onclick = () => makeGuess(n);
+      numButtonsDiv.appendChild(btn);
+    }
+
+    // 推理（アタック）
+    async function makeGuess(num) {
+      if (selectedCard === null) return;
+      if (waitingForOwnOpen) return; // 今は自分カード公開待ちなのでアタック不可
+
+      const roomRef = ref(db, "rooms/" + roomCode);
+      const snap = await get(roomRef);
+      const data = snap.val();
+      if (!data) return;
+
+      const me = data[playerRole];
+      const oppRole = (playerRole === "white") ? "black" : "white";
+      const opp = data[oppRole];
+      const target = opp.cards[selectedCard];
       if (!target) return;
 
       if (target.num === num) {
-        opponent.open.push(selectedCard);
-        message.textContent = `正解！${opponentRole}の${selectedCard + 1}番は${num}`;
-        if (opponent.open.length === opponent.cards.length) data.winner = playerRole;
+        // 正解
+        opp.open = opp.open || [];
+        opp.open.push(selectedCard);
+        message.textContent = `正解！${oppRole}の${selectedCard+1}番は${num}`;
+        // 全部開いたら勝ち
+        if (opp.open.length === opp.cards.length) {
+          data.winner = playerRole;
+        }
+        await set(roomRef, data);
       } else {
+        // 不正解 → 自分で公開するフェーズへ
         message.textContent = "不正解！公開する自分のカードを選んでください。";
         waitingForOwnOpen = true;
+        await set(roomRef, data); // ターンはここでは交代しない。公開したときに交代
       }
 
-      await set(roomRef, data);
       selectedCard = null;
     }
 
+    // ステイ
     stayBtn.onclick = async () => {
-      if (waitingForOwnOpen) return; // 公開中は禁止
-      const next = playerRole === "white" ? "black" : "white";
+      if (waitingForOwnOpen) return; // 公開待ち中はステイ禁止
+      const next = (playerRole === "white") ? "black" : "white";
       await update(ref(db, "rooms/" + roomCode), { turn: next });
       message.textContent = "ステイしました。相手の番です。";
     };
 
+    // リロードでやり直し
     againBtn.onclick = () => location.reload();
   </script>
 </body>
