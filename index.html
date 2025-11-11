@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.3-secure</title>
+  <title>ALGO ONLINE Ver4.4</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -125,6 +125,7 @@
 
     let playerRole = null;
     let roomCode = null;
+    let selectedCard = null;
 
     const createRoomBtn = document.getElementById("createRoom");
     const joinRoomBtn = document.getElementById("joinRoom");
@@ -192,17 +193,28 @@
     function render(state) {
       const me = state[playerRole];
       const opponent = state[playerRole === "white" ? "black" : "white"];
+
+      // 安全チェック
+      if (!me || !opponent || !me.cards || !opponent.cards) {
+        message.textContent = "相手の接続を待っています...";
+        return;
+      }
+
       playerCardsDiv.innerHTML = "";
       opponentCardsDiv.innerHTML = "";
 
+      // 自分のカード表示
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
-        if (me.open.includes(i)) div.classList.add("openCard");
+        if (Array.isArray(me.open) && me.open.includes(i)) {
+          div.classList.add("openCard");
+        }
         playerCardsDiv.appendChild(div);
       });
 
+      // 相手のカード表示
       opponent.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card hiddenCard";
@@ -214,12 +226,14 @@
             message.textContent = `相手の${i + 1}番目のカードを選択中`;
           }
         };
-        if (opponent.open.includes(i)) {
+
+        if (Array.isArray(opponent.open) && opponent.open.includes(i)) {
           div.textContent = c.num;
           div.style.background = c.color === "white" ? "#fff" : "#000";
           div.style.color = c.color === "white" ? "#000" : "#fff";
           div.classList.remove("hiddenCard");
         }
+
         opponentCardsDiv.appendChild(div);
       });
 
@@ -230,7 +244,7 @@
       }
     }
 
-    // 数字ボタン
+    // 数字ボタン生成
     for (let i = 0; i <= 11; i++) {
       const btn = document.createElement("button");
       btn.textContent = i;
@@ -240,27 +254,30 @@
       numButtonsDiv.appendChild(btn);
     }
 
-    let selectedCard = null;
-
     async function makeGuess(num) {
       if (selectedCard === null) return;
       const roomRef = ref(db, "rooms/" + roomCode);
       const snap = await get(roomRef);
       const data = snap.val();
+      if (!data) return;
+
       const me = data[playerRole];
       const opponentRole = playerRole === "white" ? "black" : "white";
       const opponent = data[opponentRole];
+      if (!me || !opponent) return;
 
       const target = opponent.cards[selectedCard];
       if (!target) return;
 
       if (target.num === num) {
+        opponent.open = opponent.open || [];
         opponent.open.push(selectedCard);
         message.textContent = `正解！${opponentRole}の${selectedCard + 1}番は${num}`;
         if (opponent.open.length === opponent.cards.length) {
           data.winner = playerRole;
         }
       } else {
+        me.open = me.open || [];
         me.open.push(findFirstClosed(me));
         message.textContent = `不正解！自分の${me.open[me.open.length - 1] + 1}番を公開`;
         data.turn = opponentRole;
@@ -272,7 +289,7 @@
 
     function findFirstClosed(me) {
       for (let i = 0; i < me.cards.length; i++) {
-        if (!me.open.includes(i)) return i;
+        if (!Array.isArray(me.open) || !me.open.includes(i)) return i;
       }
       return 0;
     }
