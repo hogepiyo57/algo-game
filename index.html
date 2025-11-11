@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver5.6</title>
+  <title>ALGO ONLINE Ver5.7</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -68,7 +68,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver5.6</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver5.7</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -144,19 +144,12 @@
       roomCode = Math.floor(1000 + Math.random()*9000).toString();
       playerRole = "white";
 
-      const shuffled = [...allCards].sort(()=>Math.random()-0.5);
-      const yourCards  = sortCards(shuffled.slice(0,4));
-      const oppCards   = sortCards(shuffled.slice(4,8));
-      const deck       = shuffled.slice(8);
+      const initState = createNewGameState();
+      // whiteはready、blackはまだ
+      initState.white.ready = true;
+      initState.black.ready = false;
 
-      await set(ref(db, "rooms/"+roomCode), {
-        white: { cards: yourCards, open: [], ready: true, mustOpen: false, drawn: false },
-        black: { cards: oppCards,  open: [], ready: false, mustOpen: false, drawn: false },
-        deck: deck,
-        turn: "white",
-        winner: null,
-        stayUntil: null
-      });
+      await set(ref(db, "rooms/"+roomCode), initState);
 
       roomInfo.textContent = "ゲームコード：" + roomCode;
       setupArea.style.display = "none";
@@ -171,6 +164,7 @@
       roomCode = code;
       playerRole = "black";
 
+      // blackをreadyにするだけでゲームは始まる
       await update(ref(db, "rooms/"+roomCode+"/black"), { ready: true });
 
       roomInfo.textContent = "ゲームコード：" + roomCode;
@@ -179,13 +173,29 @@
       startListener();
     };
 
-    // ===== 監視開始 =====
+    // 新しいゲーム状態をつくる（24枚シャッフル→4,4,残り山）
+    function createNewGameState() {
+      const shuffled = [...allCards].sort(()=>Math.random()-0.5);
+      const whiteCards = sortCards(shuffled.slice(0,4));
+      const blackCards = sortCards(shuffled.slice(4,8));
+      const deck       = shuffled.slice(8);
+      return {
+        white: { cards: whiteCards, open: [], ready: true,  mustOpen: false, drawn: false },
+        black: { cards: blackCards, open: [], ready: true,  mustOpen: false, drawn: false },
+        deck: deck,
+        turn: "white",
+        winner: null,
+        stayUntil: null
+      };
+    }
+
+    // ===== リアルタイム監視 =====
     function startListener() {
       onValue(ref(db, "rooms/"+roomCode), snap => {
         const data = snap.val();
         if (!data) return;
         latestState = data;
-        // ここで引く。引いた場合は古い画面を描かず、次のonValueで描画する
+        // ここで引く。引いたらこのスナップショットは描画せず次で描画
         maybeDrawCard(data).then(drew => {
           if (!drew) {
             render(data);
@@ -194,8 +204,7 @@
       });
     }
 
-    // ===== ターン開始時の自動ドロー =====
-    // 戻り値: true = 引いたのでこのスナップショットは描画しないでOK
+    // ===== 手番開始時に引く =====
     async function maybeDrawCard(state) {
       if (!state) return false;
       if (state.turn !== playerRole) return false;
@@ -217,15 +226,16 @@
       updates[`rooms/${roomCode}/${playerRole}/cards`] = newCards;
       updates[`rooms/${roomCode}/${playerRole}/drawn`] = true;
       updates[`rooms/${roomCode}/deck`] = newDeck;
-
-      // 山がここで尽きたら、この手番の人だけ次にステイOK
       if (newDeck.length === 0) {
         updates[`rooms/${roomCode}/stayUntil`] = playerRole;
       }
 
       await update(ref(db), updates);
 
-      // 次のonValueで新しい状態が来るので、今は描画しない
+      if (!me.mustOpen && !state.winner) {
+        message.textContent = "カードを1枚引きました。相手のカードを当ててください。";
+      }
+
       return true;
     }
 
@@ -241,6 +251,7 @@
         return;
       }
 
+      // DB側のmustOpenをローカルにも反映
       waitingForOwnOpen = waitingForOwnOpen || !!me.mustOpen;
 
       const myOpen  = Array.isArray(me.open)  ? me.open  : [];
@@ -319,8 +330,8 @@
       if (!latestState) return;
       const meRole  = playerRole;
       const oppRole = (meRole === "white") ? "black" : "white";
-      const me = latestState[meRole];
 
+      const me = latestState[meRole];
       const currentOpen = Array.isArray(me.open) ? me.open.slice() : [];
       if (!currentOpen.includes(index)) currentOpen.push(index);
 
@@ -407,7 +418,22 @@
     };
 
     // ===== もう一回 =====
-    againBtn.onclick = () => location.reload();
+    againBtn.onclick = async () => {
+      if (!roomCode) return;
+      // 現在の部屋を読んで、参加状況を引き継ぐ
+      const snap = await get(ref(db, "rooms/" + roomCode));
+      const cur = snap.val();
+      // 新しいゲーム状態を作る
+      const newState = createNewGameState();
+      // 参加状況は現在のものを使う（white / blackともにreadyならそのまま）
+      if (cur && cur.white && cur.white.ready) newState.white.ready = true;
+      if (cur && cur.black && cur.black.ready) newState.black.ready = true;
+
+      await set(ref(db, "rooms/" + roomCode), newState);
+      message.textContent = "新しいゲームを開始しました。";
+      selectedCard = null;
+      waitingForOwnOpen = false;
+    };
   </script>
 </body>
 </html>
