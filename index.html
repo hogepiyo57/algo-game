@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.9</title>
+<title>ALGO ONLINE Ver4.0</title>
 <style>
 body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
 h1{background:#333;margin:0;padding:12px;font-size:24px;}
@@ -13,7 +13,9 @@ h1{background:#333;margin:0;padding:12px;font-size:24px;}
   width:50px;height:70px;border-radius:6px;
   display:flex;justify-content:center;align-items:center;
   font-weight:bold;font-size:20px;cursor:pointer;border:1px solid #888;
+  transition:transform .2s;
 }
+.card:hover{transform:scale(1.08);}
 .white{background:#fff;color:#000;}
 .black{background:#000;color:#fff;}
 .self-closed{box-shadow:0 0 0 3px #555 inset;}
@@ -27,14 +29,23 @@ button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px
 #resetBtn,#retryBtn{background:#a33;color:#fff;}
 #numberButtons button:hover,#stayBtn:hover,#resetBtn:hover,#retryBtn:hover{background:#999;}
 #status{font-size:18px;margin:10px;}
-#subMessage{font-size:16px;color:#ccc;margin-bottom:10px;}
+#subMessage{
+  font-size:16px;color:#ccc;margin-bottom:10px;
+  opacity:0;transition:opacity 1.2s;
+}
+.fade-in{opacity:1;}
+.fade-out{opacity:0;transition:opacity 2s;}
+@keyframes blink {
+  0%,100%{opacity:1;}
+  50%{opacity:0.3;}
+}
+.turn-active{color:#0f0;font-weight:bold;animation:blink 1s infinite;}
 input{padding:8px;font-size:16px;}
 #roomCodeDisplay,#gameRoomCode{font-size:20px;color:#0f0;font-weight:bold;margin:6px;}
-.turn-active{color:#0f0;font-weight:bold;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver3.9</small></h1>
+<h1>ALGO ONLINE <small>Ver4.0</small></h1>
 
 <!-- ロビー -->
 <div id="lobby" class="screen active">
@@ -81,6 +92,7 @@ let roomId=null, playerId=null, opponentId=null;
 let state=null;
 let selectedTarget=null;
 let drawDone=false;
+let fadeTimer=null;
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
 function sortCards(cards){cards.sort((a,b)=>(a.num===b.num?(a.color==="black"?-1:1):a.num-b.num));}
@@ -149,22 +161,33 @@ function startGameListener(){
   });
 }
 
+function showFadeMessage(text){
+  const sub = document.getElementById("subMessage");
+  sub.textContent = text;
+  sub.classList.add("fade-in");
+  clearTimeout(fadeTimer);
+  fadeTimer = setTimeout(()=>{
+    sub.classList.remove("fade-in");
+    sub.classList.add("fade-out");
+    setTimeout(()=>{ sub.classList.remove("fade-out"); },2000);
+  },3000);
+}
+
 function render(){
   if(!state) return;
   const my = state.players[playerId];
   const op = state.players[opponentId];
   const status = document.getElementById("status");
-  const sub = document.getElementById("subMessage");
 
   if (state.winner) {
     status.textContent = (state.winner === playerId) ? "あなたの勝ち" : "あなたの負け";
-    sub.textContent = "";
+    showFadeMessage("");
     document.getElementById("retryBtn").style.display = "inline-block";
   } else {
     document.getElementById("retryBtn").style.display = "none";
     status.classList.toggle("turn-active", state.turn === playerId);
     status.textContent = state.turn === playerId ? "あなたの番です！" : "相手の番です";
-    sub.textContent = state.message || "";
+    if (state.message) showFadeMessage(state.message);
   }
 
   const pb = document.getElementById("playerBoard");
