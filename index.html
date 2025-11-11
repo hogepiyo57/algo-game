@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.7</title>
+  <title>ALGO ONLINE Ver4.8</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -63,7 +63,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver4.7</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver4.8</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -155,18 +155,22 @@
       const me = state[playerRole];
       const opponentRole = playerRole === "white" ? "black" : "white";
       const opponent = state[opponentRole];
-      if (!me || !opponent) return;
+
+      // 🧩 cards未読み込み対策
+      if (!me || !opponent || !Array.isArray(me.cards) || !Array.isArray(opponent.cards)) {
+        message.textContent = "カードを配布中...";
+        return;
+      }
 
       sortCards(me.cards); sortCards(opponent.cards);
       playerCardsDiv.innerHTML = ""; opponentCardsDiv.innerHTML = "";
 
-      // === 自分のカード描画 ===
+      // === 自分のカード ===
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
 
-        // 公開待ち中なら選択可能
         if (waitingForOwnOpen && !me.open.includes(i)) {
           div.style.outline = "2px solid yellow";
           div.onclick = async () => {
@@ -185,7 +189,7 @@
         playerCardsDiv.appendChild(div);
       });
 
-      // === 相手カード描画 ===
+      // === 相手のカード ===
       opponent.cards.forEach((c, i) => {
         const div = document.createElement("div");
         if (opponent.open.includes(i)) {
@@ -239,7 +243,7 @@
     }
 
     stayBtn.onclick = async () => {
-      if (waitingForOwnOpen) return; // 公開中は操作禁止
+      if (waitingForOwnOpen) return; // 公開中は禁止
       const next = playerRole === "white" ? "black" : "white";
       await update(ref(db, "rooms/" + roomCode), { turn: next });
       message.textContent = "ステイしました。相手の番です。";
