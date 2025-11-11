@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.4</title>
+  <title>ALGO ONLINE Ver4.4.1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -48,21 +48,36 @@
       border: 2px solid #fff;
     }
     .hiddenCard {
-      background: #555;
-      color: #555;
+      color: transparent;
+      border: 2px solid #888;
     }
     .openCard {
       outline: 3px solid #00ffcc;
     }
+    #numButtons {
+      margin-top: 10px;
+    }
     #numButtons button {
       font-size: 18px;
       width: 40px;
+      height: 40px;
       margin: 3px;
       cursor: pointer;
+      border-radius: 6px;
     }
-    #stayButton, #againButton {
-      font-size: 16px;
+    #stayButton {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      width: 60px;
+      height: 40px;
       margin-left: 10px;
+      cursor: pointer;
+    }
+    #againButton {
+      font-size: 16px;
+      margin-top: 10px;
       cursor: pointer;
     }
     #message {
@@ -78,7 +93,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver4.3-secure</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver4.4.1</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -89,13 +104,13 @@
   <div id="gameArea" style="display:none;">
     <div id="turnInfo"></div>
     <div id="message"></div>
-    <h3>あなたの手札</h3>
-    <div id="playerCards"></div>
     <h3>相手の手札</h3>
     <div id="opponentCards"></div>
+    <h3>あなたの手札</h3>
+    <div id="playerCards"></div>
     <div id="numButtons"></div>
     <button id="stayButton">ステイ</button>
-    <button id="againButton">もう一回</button>
+    <div><button id="againButton">もう一回</button></div>
   </div>
 
   <script type="module">
@@ -103,7 +118,6 @@
     import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-    // Firebase設定
     const firebaseConfig = {
       apiKey: "AIzaSyB9WONjuFuyxQg9T7zV34-LA7mIp7QvwR0",
       authDomain: "algo-e0da0.firebaseapp.com",
@@ -118,7 +132,6 @@
     const db = getDatabase(app);
     const auth = getAuth(app);
 
-    // 匿名ログイン
     signInAnonymously(auth)
       .then(() => console.log("匿名ログイン成功"))
       .catch((err) => console.error("ログイン失敗:", err));
@@ -147,7 +160,6 @@
       }
     }
 
-    // ゲーム作成
     createRoomBtn.onclick = async () => {
       roomCode = Math.floor(1000 + Math.random() * 9000);
       playerRole = "white";
@@ -166,7 +178,6 @@
       startGameListener();
     };
 
-    // 入室
     joinRoomBtn.onclick = async () => {
       roomCode = document.getElementById("roomCodeInput").value.trim();
       if (!roomCode) return alert("コードを入力");
@@ -179,7 +190,6 @@
       startGameListener();
     };
 
-    // リスナー起動
     function startGameListener() {
       const roomRef = ref(db, "rooms/" + roomCode);
       onValue(roomRef, (snapshot) => {
@@ -189,12 +199,9 @@
       });
     }
 
-    // 描画
     function render(state) {
       const me = state[playerRole];
       const opponent = state[playerRole === "white" ? "black" : "white"];
-
-      // 安全チェック
       if (!me || !opponent || !me.cards || !opponent.cards) {
         message.textContent = "相手の接続を待っています...";
         return;
@@ -203,22 +210,18 @@
       playerCardsDiv.innerHTML = "";
       opponentCardsDiv.innerHTML = "";
 
-      // 自分のカード表示
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
-        if (Array.isArray(me.open) && me.open.includes(i)) {
-          div.classList.add("openCard");
-        }
+        if (Array.isArray(me.open) && me.open.includes(i)) div.classList.add("openCard");
         playerCardsDiv.appendChild(div);
       });
 
-      // 相手のカード表示
       opponent.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card hiddenCard";
-        div.style.background = c.color === "white" ? "#bbb" : "#333";
+        div.style.background = c.color === "white" ? "#fff" : "#333";
         div.dataset.index = i;
         div.onclick = () => {
           if (state.turn === playerRole) {
@@ -226,31 +229,22 @@
             message.textContent = `相手の${i + 1}番目のカードを選択中`;
           }
         };
-
         if (Array.isArray(opponent.open) && opponent.open.includes(i)) {
           div.textContent = c.num;
           div.style.background = c.color === "white" ? "#fff" : "#000";
           div.style.color = c.color === "white" ? "#000" : "#fff";
-          div.classList.remove("hiddenCard");
         }
-
         opponentCardsDiv.appendChild(div);
       });
 
       turnInfo.textContent = state.turn === playerRole ? "あなたの番です" : "相手の番です";
-
-      if (state.winner) {
-        message.textContent = (state.winner === playerRole) ? "あなたの勝ち！" : "あなたの負け...";
-      }
+      if (state.winner) message.textContent = (state.winner === playerRole) ? "あなたの勝ち！" : "あなたの負け...";
     }
 
-    // 数字ボタン生成
     for (let i = 0; i <= 11; i++) {
       const btn = document.createElement("button");
       btn.textContent = i;
-      btn.onclick = () => {
-        makeGuess(i);
-      };
+      btn.onclick = () => makeGuess(i);
       numButtonsDiv.appendChild(btn);
     }
 
@@ -260,7 +254,6 @@
       const snap = await get(roomRef);
       const data = snap.val();
       if (!data) return;
-
       const me = data[playerRole];
       const opponentRole = playerRole === "white" ? "black" : "white";
       const opponent = data[opponentRole];
@@ -273,9 +266,7 @@
         opponent.open = opponent.open || [];
         opponent.open.push(selectedCard);
         message.textContent = `正解！${opponentRole}の${selectedCard + 1}番は${num}`;
-        if (opponent.open.length === opponent.cards.length) {
-          data.winner = playerRole;
-        }
+        if (opponent.open.length === opponent.cards.length) data.winner = playerRole;
       } else {
         me.open = me.open || [];
         me.open.push(findFirstClosed(me));
