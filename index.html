@@ -130,6 +130,19 @@
     const numButtonsDiv    = document.getElementById("numButtons");
     const stayBtn          = document.getElementById("stayButton");
     const againBtn         = document.getElementById("againButton");
+    const roomCodeInput    = document.getElementById("roomCodeInput");
+
+    // 入力を半角数字4桁に制限
+    roomCodeInput.addEventListener("input", () => {
+      let v = roomCodeInput.value;
+      // 全角→半角
+      v = v.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+      // 数字以外除去
+      v = v.replace(/[^0-9]/g, "");
+      // 4桁に制限
+      v = v.slice(0, 4);
+      roomCodeInput.value = v;
+    });
 
     // 全カード
     const allCards = [];
@@ -145,7 +158,7 @@
       playerRole = "white";
 
       const initState = createNewGameState();
-      // whiteはready、blackはまだ
+      // whiteはready、blackはこれから
       initState.white.ready = true;
       initState.black.ready = false;
 
@@ -159,12 +172,11 @@
 
     // ===== ルーム入室 =====
     document.getElementById("joinRoom").onclick = async () => {
-      const code = document.getElementById("roomCodeInput").value.trim();
+      const code = roomCodeInput.value.trim();
       if (!code) { alert("コードを入力"); return; }
       roomCode = code;
       playerRole = "black";
 
-      // blackをreadyにするだけでゲームは始まる
       await update(ref(db, "rooms/"+roomCode+"/black"), { ready: true });
 
       roomInfo.textContent = "ゲームコード：" + roomCode;
@@ -195,7 +207,7 @@
         const data = snap.val();
         if (!data) return;
         latestState = data;
-        // ここで引く。引いたらこのスナップショットは描画せず次で描画
+        // 手番の人がまだ引いてなかったら先に引かせる
         maybeDrawCard(data).then(drew => {
           if (!drew) {
             render(data);
@@ -251,7 +263,7 @@
         return;
       }
 
-      // DB側のmustOpenをローカルにも反映
+      // DBのmustOpenをローカルにも反映
       waitingForOwnOpen = waitingForOwnOpen || !!me.mustOpen;
 
       const myOpen  = Array.isArray(me.open)  ? me.open  : [];
@@ -420,12 +432,10 @@
     // ===== もう一回 =====
     againBtn.onclick = async () => {
       if (!roomCode) return;
-      // 現在の部屋を読んで、参加状況を引き継ぐ
       const snap = await get(ref(db, "rooms/" + roomCode));
       const cur = snap.val();
-      // 新しいゲーム状態を作る
       const newState = createNewGameState();
-      // 参加状況は現在のものを使う（white / blackともにreadyならそのまま）
+      // 参加状態を引き継ぐ
       if (cur && cur.white && cur.white.ready) newState.white.ready = true;
       if (cur && cur.black && cur.black.ready) newState.black.ready = true;
 
