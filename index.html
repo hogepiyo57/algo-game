@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver5.4</title>
+  <title>ALGO ONLINE Ver5.5</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -68,7 +68,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver5.4</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver5.5</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -108,7 +108,7 @@
     const auth = getAuth(app);
     signInAnonymously(auth).catch(e => console.error(e));
 
-    // 並べ方：数字→同値なら黒が左
+    // 並び方：数字→同値なら黒が左
     const colorRank = c => (c === "black" ? 0 : 1);
     const sortCards = cards => cards.sort((a,b)=>(a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
 
@@ -145,16 +145,17 @@
       playerRole = "white";
 
       const shuffled = [...allCards].sort(()=>Math.random()-0.5);
-      const yourCards  = sortCards(shuffled.slice(0,4));   // white
-      const oppCards   = sortCards(shuffled.slice(4,8));   // black
-      const deck       = shuffled.slice(8);                // 残り16枚
+      const yourCards  = sortCards(shuffled.slice(0,4));
+      const oppCards   = sortCards(shuffled.slice(4,8));
+      const deck       = shuffled.slice(8);
 
       await set(ref(db, "rooms/"+roomCode), {
         white: { cards: yourCards, open: [], ready: true, mustOpen: false, drawn: false },
         black: { cards: oppCards,  open: [], ready: false, mustOpen: false, drawn: false },
         deck: deck,
         turn: "white",
-        winner: null
+        winner: null,
+        stayUntil: null  // 山が切れたときに「この人だけステイOK」を覚える
       });
 
       roomInfo.textContent = "ゲームコード：" + roomCode;
@@ -169,7 +170,9 @@
       if (!code) { alert("コードを入力"); return; }
       roomCode = code;
       playerRole = "black";
+
       await update(ref(db, "rooms/"+roomCode+"/black"), { ready: true });
+
       roomInfo.textContent = "ゲームコード：" + roomCode;
       setupArea.style.display = "none";
       gameArea.style.display  = "block";
@@ -191,13 +194,15 @@
     async function maybeDrawCard(state) {
       if (!state) return;
       if (state.turn !== playerRole) return;
+
       const me = state[playerRole];
       if (!me) return;
-      const drawn = me.drawn === true;
+      if (me.drawn === true) return;
+
       const deck  = Array.isArray(state.deck) ? state.deck : [];
-      if (drawn) return;
       if (deck.length === 0) return;
 
+      // 引く
       const card = deck[0];
       const newDeck = deck.slice(1);
       const newCards = Array.isArray(me.cards) ? me.cards.slice() : [];
@@ -208,6 +213,12 @@
       updates[`rooms/${roomCode}/${playerRole}/cards`] = newCards;
       updates[`rooms/${roomCode}/${playerRole}/drawn`] = true;
       updates[`rooms/${roomCode}/deck`] = newDeck;
+
+      // ここで山が空になったら「この手番の人」にはステイを許す
+      if (newDeck.length === 0) {
+        updates[`rooms/${roomCode}/stayUntil`] = playerRole;
+      }
+
       await update(ref(db), updates);
 
       if (!me.mustOpen && !state.winner) {
@@ -227,7 +238,6 @@
         return;
       }
 
-      // DBにある mustOpen をローカルにも反映
       waitingForOwnOpen = waitingForOwnOpen || !!me.mustOpen;
 
       const myOpen  = Array.isArray(me.open)  ? me.open  : [];
@@ -239,7 +249,7 @@
       playerCardsDiv.innerHTML   = "";
       opponentCardsDiv.innerHTML = "";
 
-      // === あなたのカード ===
+      // あなたのカード
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
@@ -254,7 +264,7 @@
         playerCardsDiv.appendChild(div);
       });
 
-      // === 相手のカード ===
+      // 相手のカード
       opp.cards.forEach((c, i) => {
         const div = document.createElement("div");
         if (oppOpen.includes(i)) {
@@ -275,17 +285,16 @@
         opponentCardsDiv.appendChild(div);
       });
 
-      // ステイ可否：山がないときは不可
+      // ステイ可否判定
       const deckEmpty = !Array.isArray(state.deck) || state.deck.length === 0;
-      if (deckEmpty) {
-        stayBtn.classList.add("disabled");
-        stayBtn.disabled = true;
-        if (state.turn === playerRole && !waitingForOwnOpen && !state.winner) {
-          message.textContent = "山札がありません。必ず相手のカードを宣言してください。";
-        }
-      } else {
-        stayBtn.classList.remove("disabled");
+      const canStayThisTurn =
+        !deckEmpty || state.stayUntil === playerRole; // 山がある or 山がなくなった手番の人
+      if (canStayThisTurn && state.turn === playerRole && !waitingForOwnOpen && !state.winner) {
         stayBtn.disabled = false;
+        stayBtn.classList.remove("disabled");
+      } else {
+        stayBtn.disabled = true;
+        stayBtn.classList.add("disabled");
       }
 
       turnInfo.textContent = (state.turn === playerRole) ? "あなたの番です" : "相手の番です";
@@ -312,11 +321,17 @@
       const currentOpen = Array.isArray(me.open) ? me.open.slice() : [];
       if (!currentOpen.includes(index)) currentOpen.push(index);
 
+      const deckEmpty = !Array.isArray(latestState.deck) || latestState.deck.length === 0;
+
       const updates = {};
       updates[`rooms/${roomCode}/${meRole}/open`] = currentOpen;
       updates[`rooms/${roomCode}/${meRole}/mustOpen`] = false;
       updates[`rooms/${roomCode}/turn`] = oppRole;
       updates[`rooms/${roomCode}/${oppRole}/drawn`] = false;
+      if (deckEmpty) {
+        // 山がもうないなら、次の人からステイ不可
+        updates[`rooms/${roomCode}/stayUntil`] = null;
+      }
 
       await update(ref(db), updates);
       waitingForOwnOpen = false;
@@ -354,7 +369,6 @@
       if (!target) return;
 
       if (target.num === num) {
-        // 正解：手番はそのまま
         opp.open.push(selectedCard);
         message.textContent = `正解！相手の${selectedCard+1}番は ${num} だった。`;
         if (opp.open.length === opp.cards.length) {
@@ -373,16 +387,20 @@
 
     // ===== ステイ =====
     stayBtn.onclick = async () => {
-      // UI側で無効になってても二重に守る
       if (stayBtn.disabled) return;
       if (waitingForOwnOpen) return;
-      // 山札が空でもここに来ないようにしているが一応確認
-      if (!latestState || !Array.isArray(latestState.deck) || latestState.deck.length === 0) return;
 
       const next = (playerRole === "white") ? "black" : "white";
+      const deckEmpty = !latestState || !Array.isArray(latestState.deck) || latestState.deck.length === 0;
+
       const updates = {};
       updates[`rooms/${roomCode}/turn`] = next;
       updates[`rooms/${roomCode}/${next}/drawn`] = false;
+      if (deckEmpty) {
+        // 山がないなら、次の手番ではもうステイ不可
+        updates[`rooms/${roomCode}/stayUntil`] = null;
+      }
+
       await update(ref(db), updates);
       message.textContent = "ステイしました。相手の番です。";
     };
