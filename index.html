@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.5</title>
+  <title>ALGO ONLINE Ver4.6</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -93,7 +93,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver4.5</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver4.6</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -136,13 +136,13 @@
       .then(() => console.log("匿名ログイン成功"))
       .catch((err) => console.error("ログイン失敗:", err));
 
-    // === 並び順ルール ===
-    const colorRank = c => (c === "black" ? 0 : 1); // 黒が左
+    const colorRank = c => (c === "black" ? 0 : 1);
     const sortCards = cards => cards.sort((a, b) => (a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
 
     let playerRole = null;
     let roomCode = null;
     let selectedCard = null;
+    let waitingForOwnOpen = false; // ← 追加：失敗後の自分公開フラグ
 
     const createRoomBtn = document.getElementById("createRoom");
     const joinRoomBtn = document.getElementById("joinRoom");
@@ -223,6 +223,23 @@
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
+
+        // 自分のカードクリック
+        if (waitingForOwnOpen && !me.open.includes(i)) {
+          div.onclick = async () => {
+            const roomRef = ref(db, "rooms/" + roomCode);
+            const snap = await get(roomRef);
+            const data = snap.val();
+            const meNow = data[playerRole];
+            meNow.open.push(i);
+            data.turn = playerRole === "white" ? "black" : "white";
+            waitingForOwnOpen = false;
+            message.textContent = `自分の${i + 1}番を公開した。相手の番です。`;
+            await set(roomRef, data);
+          };
+          div.style.outline = "2px solid yellow";
+        }
+
         if (Array.isArray(me.open) && me.open.includes(i)) div.classList.add("openCard");
         playerCardsDiv.appendChild(div);
       });
@@ -233,7 +250,7 @@
         div.style.background = c.color === "white" ? "#fff" : "#333";
         div.dataset.index = i;
         div.onclick = () => {
-          if (state.turn === playerRole) {
+          if (state.turn === playerRole && !waitingForOwnOpen) {
             selectedCard = i;
             message.textContent = `相手の${i + 1}番目のカードを選択中`;
           }
@@ -258,7 +275,7 @@
     }
 
     async function makeGuess(num) {
-      if (selectedCard === null) return;
+      if (selectedCard === null || waitingForOwnOpen) return;
       const roomRef = ref(db, "rooms/" + roomCode);
       const snap = await get(roomRef);
       const data = snap.val();
@@ -277,24 +294,12 @@
         message.textContent = `正解！${opponentRole}の${selectedCard + 1}番は${num}`;
         if (opponent.open.length === opponent.cards.length) data.winner = playerRole;
       } else {
-        me.open = me.open || [];
-        me.open.push(findFirstClosed(me));
-        message.textContent = `不正解！自分の${me.open[me.open.length - 1] + 1}番を公開`;
-        data.turn = opponentRole;
+        message.textContent = "不正解！公開する自分のカードを選んでください。";
+        waitingForOwnOpen = true;
       }
-
-      sortCards(me.cards);
-      sortCards(opponent.cards);
 
       await set(roomRef, data);
       selectedCard = null;
-    }
-
-    function findFirstClosed(me) {
-      for (let i = 0; i < me.cards.length; i++) {
-        if (!Array.isArray(me.open) || !me.open.includes(i)) return i;
-      }
-      return 0;
     }
 
     stayBtn.onclick = async () => {
