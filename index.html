@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ALGO ONLINE Ver4.2</title>
+<title>ALGO ONLINE Ver4.3</title>
 <style>
 body{
   background:#222;color:#eee;font-family:"Segoe UI",sans-serif;
@@ -13,15 +13,15 @@ h1{background:#333;margin:0;padding:12px;font-size:22px;}
 .screen{display:none;}
 .active{display:block;}
 .board{
-  display:flex;justify-content:center;gap:6px;margin:10px;
+  display:flex;justify-content:center;gap:10px;margin:12px;
   flex-wrap:wrap;
 }
 .card{
   border-radius:6px;
   display:flex;justify-content:center;align-items:center;
-  font-weight:bold;font-size:20px;cursor:pointer;border:2px solid #888;
+  font-weight:bold;font-size:22px;cursor:pointer;border:2px solid #888;
   transition:transform .1s;
-  width:58px;height:80px;
+  width:60px;height:80px;
 }
 .card:hover{transform:scale(1.05);}
 .white{background:#fff;color:#000;}
@@ -36,33 +36,40 @@ button{
   border:none;border-radius:6px;cursor:pointer;
 }
 #numberRow{
-  display:flex;justify-content:flex-start;align-items:center;
-  overflow-x:auto;white-space:nowrap;
-  padding:4px 10px;
-  scroll-snap-type:x mandatory;
+  display:flex;justify-content:center;align-items:center;
+  flex-wrap:wrap;gap:5px;
+  margin:8px auto;
 }
-#numberRow::-webkit-scrollbar{display:none;}
-#numberButtons{display:flex;gap:5px;flex-wrap:nowrap;}
+#numberButtons{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
 #numberButtons button{background:#444;color:#fff;min-width:48px;}
-#stayBtn{background:#777;color:#fff;margin-left:10px;flex:0 0 auto;}
+#stayBtn{background:#777;color:#fff;margin-left:10px;}
 #resetBtn,#retryBtn{background:#a33;color:#fff;}
 #numberButtons button:hover,#stayBtn:hover,#resetBtn:hover,#retryBtn:hover{background:#999;}
 #status{font-size:18px;margin:6px;}
 #subMessage{font-size:16px;color:#ccc;margin-bottom:10px;min-height:22px;}
 input{padding:8px;font-size:16px;width:140px;}
 #roomCodeDisplay,#gameRoomCode{font-size:20px;color:#0f0;font-weight:bold;margin:6px;}
-@media (max-width:600px){
-  .card{width:42px;height:60px;font-size:16px;}
-  #numberButtons button{min-width:40px;font-size:14px;padding:8px;}
-  #stayBtn{font-size:14px;padding:8px;}
+
+/* --- スマホ表示調整 --- */
+@media (max-width:900px){
+  .card{width:46px;height:60px;font-size:16px;}
+  #numberRow{
+    justify-content:flex-start;
+    overflow-x:auto;
+    white-space:nowrap;
+    scroll-snap-type:x mandatory;
+    padding:4px 10px;
+  }
+  #numberRow::-webkit-scrollbar{display:none;}
+  #numberButtons{flex-wrap:nowrap;}
+  #stayBtn{flex:0 0 auto;}
   h1{font-size:18px;}
 }
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver4.2</small></h1>
+<h1>ALGO ONLINE <small>Ver4.3</small></h1>
 
-<!-- ロビー -->
 <div id="lobby" class="screen active">
   <p><button id="createRoom">ゲームコード発行</button></p>
   <div id="roomCodeDisplay"></div>
@@ -72,7 +79,6 @@ input{padding:8px;font-size:16px;width:140px;}
   <p id="lobbyMessage"></p>
 </div>
 
-<!-- ゲーム -->
 <div id="game" class="screen">
   <div id="gameRoomCode"></div>
   <div id="status"></div>
@@ -81,10 +87,12 @@ input{padding:8px;font-size:16px;width:140px;}
   <div id="opponentBoard" class="board"></div>
   <h2>自分</h2>
   <div id="playerBoard" class="board"></div>
+
   <div id="numberRow">
     <div id="numberButtons"></div>
     <button id="stayBtn">ステイ</button>
   </div>
+
   <button id="retryBtn" style="display:none;">もう一回</button>
   <button id="resetBtn">初期化</button>
 </div>
