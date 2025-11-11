@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ALGO ONLINE Ver4.4</title>
+<title>ALGO ONLINE Ver4.3</title>
 <style>
 body{
   background:#222;color:#eee;font-family:"Segoe UI",sans-serif;
@@ -31,26 +31,14 @@ h1{background:#333;margin:0;padding:12px;font-size:22px;}
 .opp-hidden-white{background:#fff;color:#fff;}
 .opp-hidden-black{background:#000;color:#000;}
 .selected{outline:3px solid #0af; outline-offset:2px;}
-
-/* 正解・不正解アニメーション */
-@keyframes flash-green {
-  0% { box-shadow:0 0 10px 4px #0f0; }
-  100% { box-shadow:none; }
-}
-@keyframes flash-red {
-  0%, 100% { box-shadow:none; }
-  50% { box-shadow:0 0 12px 4px #f00; }
-}
-.flash-correct { animation:flash-green 0.5s ease; }
-.flash-wrong { animation:flash-red 0.5s ease; }
-
 button{
   margin:5px;padding:10px 14px;font-size:16px;
   border:none;border-radius:6px;cursor:pointer;
 }
 #numberRow{
   display:flex;justify-content:center;align-items:center;
-  flex-wrap:wrap;gap:5px;margin:8px auto;
+  flex-wrap:wrap;gap:5px;
+  margin:8px auto;
 }
 #numberButtons{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
 #numberButtons button{background:#444;color:#fff;min-width:48px;}
@@ -80,7 +68,7 @@ input{padding:8px;font-size:16px;width:140px;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver4.4</small></h1>
+<h1>ALGO ONLINE <small>Ver4.3</small></h1>
 
 <div id="lobby" class="screen active">
   <p><button id="createRoom">ゲームコード発行</button></p>
@@ -252,18 +240,11 @@ async function attack(num){
   if(selectedTarget==null||state.winner)return;
   const op=state.players[opponentId];
   const target=op.cards[selectedTarget];
-  const opponentBoard=document.getElementById("opponentBoard").children[selectedTarget];
   let msg="";
   if(target.num===num){
     target.open=true;msg=`正解！ ${num}`;
-    opponentBoard.classList.add("flash-correct");
-    setTimeout(()=>opponentBoard.classList.remove("flash-correct"),600);
     if(op.cards.every(c=>c.open)){state.winner=playerId;msg="決着";}
-  }else{
-    opponentBoard.classList.add("flash-wrong");
-    setTimeout(()=>opponentBoard.classList.remove("flash-wrong"),600);
-    msg="失敗…カードを選んでください";
-  }
+  }else{msg="失敗…カードを選んでください";}
   state.message=msg;selectedTarget=null;
   await update(ref(db,`rooms/${roomId}`),state);
 }
@@ -271,9 +252,6 @@ async function attack(num){
 async function openMyCard(i){
   const my=state.players[playerId];
   my.cards[i].open=true;
-  const myCardEl=document.getElementById("playerBoard").children[i];
-  myCardEl.classList.add("flash-wrong");
-  setTimeout(()=>myCardEl.classList.remove("flash-wrong"),600);
   state.turn=opponentId;state.message="ターン交代";drawDone=false;
   await update(ref(db,`rooms/${roomId}`),state);
 }
