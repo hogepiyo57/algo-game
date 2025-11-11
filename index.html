@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ALGO ONLINE Ver3.8</title>
+<title>ALGO ONLINE Ver3.9</title>
 <style>
 body{background:#222;color:#eee;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
 h1{background:#333;margin:0;padding:12px;font-size:24px;}
@@ -21,18 +21,20 @@ h1{background:#333;margin:0;padding:12px;font-size:24px;}
 .opp-hidden-white{background:#fff;color:#fff;}
 .opp-hidden-black{background:#000;color:#000;}
 button{margin:5px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;cursor:pointer;}
+#numberButtons{display:flex;justify-content:center;align-items:center;gap:5px;flex-wrap:wrap;max-width:700px;margin:auto;}
 #numberButtons button{background:#444;color:#fff;}
-#stayBtn{background:#777;color:#fff;}
+#stayBtn{background:#777;color:#fff;margin-left:10px;}
 #resetBtn,#retryBtn{background:#a33;color:#fff;}
 #numberButtons button:hover,#stayBtn:hover,#resetBtn:hover,#retryBtn:hover{background:#999;}
 #status{font-size:18px;margin:10px;}
+#subMessage{font-size:16px;color:#ccc;margin-bottom:10px;}
 input{padding:8px;font-size:16px;}
 #roomCodeDisplay,#gameRoomCode{font-size:20px;color:#0f0;font-weight:bold;margin:6px;}
 .turn-active{color:#0f0;font-weight:bold;}
 </style>
 </head>
 <body>
-<h1>ALGO ONLINE <small>Ver3.8</small></h1>
+<h1>ALGO ONLINE <small>Ver3.9</small></h1>
 
 <!-- ロビー -->
 <div id="lobby" class="screen active">
@@ -48,6 +50,7 @@ input{padding:8px;font-size:16px;}
 <div id="game" class="screen">
   <div id="gameRoomCode"></div>
   <div id="status"></div>
+  <div id="subMessage"></div>
   <h2>相手</h2>
   <div id="opponentBoard" class="board"></div>
   <h2>自分</h2>
@@ -56,7 +59,6 @@ input{padding:8px;font-size:16px;}
   <button id="stayBtn">ステイ</button>
   <button id="retryBtn" style="display:none;">もう一回</button>
   <button id="resetBtn">初期化</button>
-  <div id="message"></div>
 </div>
 
 <script type="module">
@@ -80,11 +82,9 @@ let state=null;
 let selectedTarget=null;
 let drawDone=false;
 
-// ユーティリティ
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
 function sortCards(cards){cards.sort((a,b)=>(a.num===b.num?(a.color==="black"?-1:1):a.num-b.num));}
 
-// ロビー操作
 document.getElementById("createRoom").onclick=async()=>{
   roomId=Math.floor(1000+Math.random()*9000).toString();
   playerId="white"; opponentId="black";
@@ -104,7 +104,6 @@ document.getElementById("joinRoom").onclick=async()=>{
   switchToGame();
 };
 
-// ルーム作成
 async function createNewRoom(id){
   const deck=[];
   ["white","black"].forEach(c=>{
@@ -113,8 +112,7 @@ async function createNewRoom(id){
   shuffle(deck);
   const whiteCards=deck.splice(0,4);
   const blackCards=deck.splice(0,4);
-  sortCards(whiteCards);
-  sortCards(blackCards);
+  sortCards(whiteCards); sortCards(blackCards);
   const data={
     players:{
       white:{cards:whiteCards,connected:true},
@@ -128,7 +126,6 @@ async function createNewRoom(id){
   await set(ref(db,`rooms/${id}`),data);
 }
 
-// 画面切替
 function switchToGame(){
   document.getElementById("lobby").classList.remove("active");
   document.getElementById("game").classList.add("active");
@@ -136,13 +133,10 @@ function switchToGame(){
   startGameListener();
 }
 
-// リアルタイム監視
 function startGameListener(){
   onValue(ref(db,`rooms/${roomId}`), async (snap)=>{
     if(!snap.exists()) return;
     state = snap.val();
-
-    // 自分のターンになったら自動ドロー
     if (!state.winner && state.turn === playerId && !drawDone && state.deck && state.deck.length > 0) {
       drawDone = true;
       const card = state.deck.pop();
@@ -151,28 +145,28 @@ function startGameListener(){
       state.message = "カードを1枚引きました";
       await update(ref(db,`rooms/${roomId}`), state);
     }
-
     render();
   });
 }
 
-// 描画
 function render(){
   if(!state) return;
   const my = state.players[playerId];
   const op = state.players[opponentId];
   const status = document.getElementById("status");
+  const sub = document.getElementById("subMessage");
 
   if (state.winner) {
     status.textContent = (state.winner === playerId) ? "あなたの勝ち" : "あなたの負け";
+    sub.textContent = "";
     document.getElementById("retryBtn").style.display = "inline-block";
   } else {
     document.getElementById("retryBtn").style.display = "none";
     status.classList.toggle("turn-active", state.turn === playerId);
     status.textContent = state.turn === playerId ? "あなたの番です！" : "相手の番です";
+    sub.textContent = state.message || "";
   }
 
-  // 自分のカード
   const pb = document.getElementById("playerBoard");
   pb.innerHTML = "";
   (my.cards || []).forEach((c,i)=>{
@@ -189,7 +183,6 @@ function render(){
     pb.appendChild(div);
   });
 
-  // 相手のカード（色はわかる）
   const ob = document.getElementById("opponentBoard");
   ob.innerHTML = "";
   (op.cards || []).forEach((c,i)=>{
@@ -199,7 +192,7 @@ function render(){
       div.textContent = c.num;
     } else {
       div.className = c.color === "white" ? "card opp-hidden-white" : "card opp-hidden-black";
-      div.textContent = ""; // 「？」削除
+      div.textContent = "";
     }
     if (!state.winner &&
         state.turn === playerId &&
@@ -210,13 +203,10 @@ function render(){
     ob.appendChild(div);
   });
 
-  document.getElementById("message").textContent = state.message || "";
-
   const disable = (state.turn !== playerId) || state.winner || state.message === "失敗…カードを選んでください";
   document.querySelectorAll("#numberButtons button, #stayBtn").forEach(b => b.disabled = disable);
 }
 
-// 数字ボタン生成
 for(let n=0;n<=11;n++){
   const b=document.createElement("button");
   b.textContent=n;
@@ -224,11 +214,9 @@ for(let n=0;n<=11;n++){
   document.getElementById("numberButtons").appendChild(b);
 }
 
-// アタック処理
 async function attack(num){
   if (selectedTarget == null) return;
   if (state.winner) return;
-
   const op = state.players[opponentId];
   const target = op.cards[selectedTarget];
   let msg = "";
@@ -243,13 +231,11 @@ async function attack(num){
   } else {
     msg = "失敗…カードを選んでください";
   }
-
   state.message = msg;
   selectedTarget = null;
   await update(ref(db,`rooms/${roomId}`), state);
 }
 
-// 失敗時に自分のカードを開ける
 async function openMyCard(index){
   if (state.winner) return;
   const my = state.players[playerId];
@@ -260,7 +246,6 @@ async function openMyCard(index){
   await update(ref(db,`rooms/${roomId}`), state);
 }
 
-// ステイ
 document.getElementById("stayBtn").onclick = async () => {
   if (state.winner) return;
   state.turn = opponentId;
@@ -269,13 +254,11 @@ document.getElementById("stayBtn").onclick = async () => {
   await update(ref(db,`rooms/${roomId}`), state);
 };
 
-// もう一回
 document.getElementById("retryBtn").onclick = async () => {
   if (!roomId) return;
   await createNewRoom(roomId);
 };
 
-// リセット
 document.getElementById("resetBtn").onclick = async () => {
   if (!roomId) return;
   await remove(ref(db,`rooms/${roomId}`));
