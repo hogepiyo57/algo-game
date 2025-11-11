@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver4.4.1</title>
+  <title>ALGO ONLINE Ver4.5</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -93,7 +93,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver4.4.1</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver4.5</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -136,6 +136,10 @@
       .then(() => console.log("匿名ログイン成功"))
       .catch((err) => console.error("ログイン失敗:", err));
 
+    // === 並び順ルール ===
+    const colorRank = c => (c === "black" ? 0 : 1); // 黒が左
+    const sortCards = cards => cards.sort((a, b) => (a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
+
     let playerRole = null;
     let roomCode = null;
     let selectedCard = null;
@@ -166,6 +170,8 @@
       const shuffled = [...allCards].sort(() => Math.random() - 0.5);
       const whiteCards = shuffled.slice(0, 4);
       const blackCards = shuffled.slice(4, 8);
+      sortCards(whiteCards);
+      sortCards(blackCards);
       await set(ref(db, "rooms/" + roomCode), {
         white: { cards: whiteCards, open: [], ready: true },
         black: { cards: blackCards, open: [], ready: false },
@@ -206,6 +212,9 @@
         message.textContent = "相手の接続を待っています...";
         return;
       }
+
+      sortCards(me.cards);
+      sortCards(opponent.cards);
 
       playerCardsDiv.innerHTML = "";
       opponentCardsDiv.innerHTML = "";
@@ -273,6 +282,9 @@
         message.textContent = `不正解！自分の${me.open[me.open.length - 1] + 1}番を公開`;
         data.turn = opponentRole;
       }
+
+      sortCards(me.cards);
+      sortCards(opponent.cards);
 
       await set(roomRef, data);
       selectedCard = null;
