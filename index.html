@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ALGO ONLINE Ver5.2</title>
+  <title>ALGO ONLINE Ver5.3</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -64,7 +64,7 @@
   </style>
 </head>
 <body>
-  <h1>ALGO ONLINE <span id="version">Ver5.2</span></h1>
+  <h1>ALGO ONLINE <span id="version">Ver5.3</span></h1>
   <div id="roomInfo"></div>
   <div id="setupArea">
     <button id="createRoom">ゲームコード発行</button>
@@ -104,15 +104,15 @@
     const auth = getAuth(app);
     signInAnonymously(auth).catch(e => console.error(e));
 
-    // 並び方
+    // 並び方：数字→同値なら黒が左
     const colorRank = c => (c === "black" ? 0 : 1);
     const sortCards = cards => cards.sort((a,b)=>(a.num - b.num) || (colorRank(a.color) - colorRank(b.color)));
 
     // ===== 状態 =====
-    let playerRole = null;
+    let playerRole = null;          // "white" or "black" だけど表示は「あなた」「相手」にする
     let roomCode   = null;
-    let selectedCard = null;        // 相手の何番を狙っているか
-    let waitingForOwnOpen = false;  // ローカル側のフラグ
+    let selectedCard = null;
+    let waitingForOwnOpen = false;
     let latestState = null;
 
     // ===== DOM =====
@@ -141,12 +141,14 @@
       playerRole = "white";
 
       const shuffled = [...allCards].sort(()=>Math.random()-0.5);
-      const whiteCards = sortCards(shuffled.slice(0,4));
-      const blackCards = sortCards(shuffled.slice(4,8));
+      const yourCards  = sortCards(shuffled.slice(0,4));   // white
+      const oppCards   = sortCards(shuffled.slice(4,8));   // black
+      const deck       = shuffled.slice(8);                // 残り16枚
 
       await set(ref(db, "rooms/"+roomCode), {
-        white: { cards: whiteCards, open: [], ready: true, mustOpen: false },
-        black: { cards: blackCards, open: [], ready: false, mustOpen: false },
+        white: { cards: yourCards, open: [], ready: true, mustOpen: false, drawn: false },
+        black: { cards: oppCards,  open: [], ready: false, mustOpen: false, drawn: false },
+        deck: deck,
         turn: "white",
         winner: null
       });
@@ -172,14 +174,47 @@
       startListener();
     };
 
-    // ===== リスナー起動 =====
+    // ===== 監視開始 =====
     function startListener() {
       onValue(ref(db, "rooms/"+roomCode), snap => {
         const data = snap.val();
         if (!data) return;
         latestState = data;
+        // 手番が来ていてまだ引いていなければ引く
+        maybeDrawCard(data);
         render(data);
       });
+    }
+
+    // ===== ターン開始時の自動ドロー =====
+    async function maybeDrawCard(state) {
+      if (!state) return;
+      if (state.turn !== playerRole) return;
+      const me = state[playerRole];
+      if (!me) return;
+      const drawn = me.drawn === true; // すでに引いたか
+      const deck  = Array.isArray(state.deck) ? state.deck : [];
+      if (drawn) return;
+      if (deck.length === 0) return;
+
+      // 1枚引く（先頭から）
+      const card = deck[0];
+      const newDeck = deck.slice(1);
+      const newCards = Array.isArray(me.cards) ? me.cards.slice() : [];
+      newCards.push(card);
+      sortCards(newCards);
+
+      const updates = {};
+      updates[`rooms/${roomCode}/${playerRole}/cards`] = newCards;
+      updates[`rooms/${roomCode}/${playerRole}/drawn`] = true;
+      updates[`rooms/${roomCode}/deck`] = newDeck;
+
+      await update(ref(db), updates);
+
+      // 画面上の案内
+      if (!me.mustOpen && !state.winner) {
+        message.textContent = "カードを1枚引きました。宣言するカードを選んでください。";
+      }
     }
 
     // ===== 描画 =====
@@ -194,7 +229,7 @@
         return;
       }
 
-      // DBに残ってる「mustOpen」をローカルにも反映させる
+      // DBにある mustOpen をローカルにも反映
       waitingForOwnOpen = waitingForOwnOpen || !!me.mustOpen;
 
       const myOpen  = Array.isArray(me.open)  ? me.open  : [];
@@ -206,12 +241,13 @@
       playerCardsDiv.innerHTML   = "";
       opponentCardsDiv.innerHTML = "";
 
-      // === 自分のカード ===
+      // === あなたのカード ===
       me.cards.forEach((c, i) => {
         const div = document.createElement("div");
         div.className = "card " + (c.color === "white" ? "whiteCard" : "blackCard");
         div.textContent = c.num;
 
+        // 不正解後、公開待ち
         if (waitingForOwnOpen && !myOpen.includes(i)) {
           div.classList.add("needOpen");
           div.onclick = () => openOwnCard(i);
@@ -233,13 +269,11 @@
           div.onclick = () => {
             if (state.turn === playerRole && !waitingForOwnOpen && !state.winner) {
               selectedCard = i;
-              message.textContent = `相手の${i+1}番を選択中`;
+              message.textContent = `相手の${i+1}番のカードを当てる`;
               highlightSelectedOpponent(i);
             }
           };
-          if (selectedCard === i) {
-            div.classList.add("selectedTarget");
-          }
+          if (selectedCard === i) div.classList.add("selectedTarget");
         }
         opponentCardsDiv.appendChild(div);
       });
@@ -251,7 +285,6 @@
       }
     }
 
-    // 相手カードの選択を視覚化し直す（render後に呼ぶ）
     function highlightSelectedOpponent(idx) {
       [...opponentCardsDiv.children].forEach((el, i) => {
         el.classList.remove("selectedTarget");
@@ -259,22 +292,22 @@
       });
     }
 
-    // ===== 不正解後に自分のカードを開く =====
+    // ===== 自分のカードを公開（不正解後） =====
     async function openOwnCard(index) {
       if (!latestState) return;
-
       const meRole  = playerRole;
       const oppRole = (meRole === "white") ? "black" : "white";
-      const me = latestState[meRole];
 
+      const me = latestState[meRole];
       const currentOpen = Array.isArray(me.open) ? me.open.slice() : [];
       if (!currentOpen.includes(index)) currentOpen.push(index);
 
-      // mustOpen を解除して、ターンを相手へ
       const updates = {};
       updates[`rooms/${roomCode}/${meRole}/open`] = currentOpen;
       updates[`rooms/${roomCode}/${meRole}/mustOpen`] = false;
+      // 相手に手番を渡し、相手には「まだ引いてない」状態にする
       updates[`rooms/${roomCode}/turn`] = oppRole;
+      updates[`rooms/${roomCode}/${oppRole}/drawn`] = false;
 
       await update(ref(db), updates);
       waitingForOwnOpen = false;
@@ -305,23 +338,23 @@
       const opp = data[oppRole];
 
       if (!Array.isArray(opp.cards)) return;
-
-      if (!Array.isArray(opp.open)) opp.open = [];
-      if (!Array.isArray(me.open))  me.open  = [];
+      if (!Array.isArray(opp.open))  opp.open = [];
+      if (!Array.isArray(me.open))   me.open  = [];
 
       const target = opp.cards[selectedCard];
       if (!target) return;
 
       if (target.num === num) {
-        // 正解
+        // 正解 → 相手のカードを公開。手番はそのまま
         opp.open.push(selectedCard);
-        message.textContent = `正解！${oppRole}の${selectedCard+1}番は${num}`;
+        message.textContent = `正解！相手の${selectedCard+1}番は ${num} だった。`;
         if (opp.open.length === opp.cards.length) {
           data.winner = meRole;
         }
+        // drawn は変えない（同じターンで続けて当てられる）
         await set(roomRef, data);
       } else {
-        // 不正解 → DBにもフラグを残す
+        // 不正解 → 自分で公開
         me.mustOpen = true;
         message.textContent = "不正解！公開する自分のカードを選んでください。";
         await set(roomRef, data);
@@ -335,7 +368,10 @@
     stayBtn.onclick = async () => {
       if (waitingForOwnOpen) return;
       const next = (playerRole === "white") ? "black" : "white";
-      await update(ref(db, "rooms/"+roomCode), { turn: next });
+      const updates = {};
+      updates[`rooms/${roomCode}/turn`] = next;
+      updates[`rooms/${roomCode}/${next}/drawn`] = false; // 次の人がカードを引けるようにする
+      await update(ref(db), updates);
       message.textContent = "ステイしました。相手の番です。";
     };
 
